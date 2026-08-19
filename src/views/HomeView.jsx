@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Film, Tv, Trophy, Flame, Layers } from 'lucide-react';
+import { Film, Tv, Trophy, Flame } from 'lucide-react';
 import HeroBanner from '../components/HeroBanner';
 import ContentRail from '../components/ContentRail';
 import { 
   getHomeSections, 
+  getHomeFlat,
   getFeatured, 
   getCinemaXXI, 
   getTrendingMovies, 
   getTrendingSeries, 
   getLeaderboard,
+  extractMediaArray,
   normalizeMediaItem 
 } from '../services/api';
 
@@ -26,59 +28,64 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
     const loadData = async () => {
       setIsLoading(true);
 
-      const [featRes, xx1Res, movRes, serRes, leadRes, secRes] = await Promise.all([
+      const [featRes, xx1Res, movRes, serRes, leadRes, secRes, flatRes] = await Promise.all([
         getFeatured(),
         getCinemaXXI(),
         getTrendingMovies(),
         getTrendingSeries(),
         getLeaderboard(),
         getHomeSections(),
+        getHomeFlat(),
       ]);
 
       if (!isMounted) return;
 
-      // Normalize featured items
-      let feats = [];
-      if (featRes.success && featRes.data) {
-        const raw = Array.isArray(featRes.data) ? featRes.data : featRes.data.data || [];
-        feats = raw.map(normalizeMediaItem);
-      }
+      const flatItems = flatRes.success ? extractMediaArray(flatRes.data).map(normalizeMediaItem) : [];
+
+      // 1. Featured items
+      let feats = featRes.success ? extractMediaArray(featRes.data).map(normalizeMediaItem) : [];
       if (feats.length === 0 && secRes.success && secRes.data) {
-        // Try extracted sections
-        const secFeatured = secRes.data.featured || secRes.data.trending || [];
-        feats = secFeatured.map(normalizeMediaItem);
+        feats = extractMediaArray(secRes.data.featured || secRes.data.trending).map(normalizeMediaItem);
+      }
+      if (feats.length === 0 && flatItems.length > 0) {
+        feats = flatItems.slice(0, 5);
       }
       setFeaturedItems(feats);
 
-      // CinemaXXI items
-      let xx1 = [];
-      if (xx1Res.success && xx1Res.data) {
-        const raw = Array.isArray(xx1Res.data) ? xx1Res.data : xx1Res.data.data || [];
-        xx1 = raw.map(normalizeMediaItem);
+      // 2. CinemaXXI items
+      let xx1 = xx1Res.success ? extractMediaArray(xx1Res.data).map(normalizeMediaItem) : [];
+      if (xx1.length === 0 && secRes.success && secRes.data) {
+        xx1 = extractMediaArray(secRes.data.cinemaxxi || secRes.data.cinema_xxi).map(normalizeMediaItem);
+      }
+      if (xx1.length === 0 && flatItems.length > 0) {
+        xx1 = flatItems.filter((i) => i.type === 'movie').slice(0, 10);
       }
       setCinemaXXIItems(xx1);
 
-      // Trending Movies
-      let tMov = [];
-      if (movRes.success && movRes.data) {
-        const raw = Array.isArray(movRes.data) ? movRes.data : movRes.data.data || [];
-        tMov = raw.map(normalizeMediaItem);
+      // 3. Trending Movies
+      let tMov = movRes.success ? extractMediaArray(movRes.data).map(normalizeMediaItem) : [];
+      if (tMov.length === 0 && secRes.success && secRes.data) {
+        tMov = extractMediaArray(secRes.data.movies || secRes.data.trending_movies).map(normalizeMediaItem);
+      }
+      if (tMov.length === 0 && flatItems.length > 0) {
+        tMov = flatItems.filter((i) => i.type === 'movie');
       }
       setTrendingMovies(tMov);
 
-      // Trending Series
-      let tSer = [];
-      if (serRes.success && serRes.data) {
-        const raw = Array.isArray(serRes.data) ? serRes.data : serRes.data.data || [];
-        tSer = raw.map(normalizeMediaItem);
+      // 4. Trending Series
+      let tSer = serRes.success ? extractMediaArray(serRes.data).map(normalizeMediaItem) : [];
+      if (tSer.length === 0 && secRes.success && secRes.data) {
+        tSer = extractMediaArray(secRes.data.series || secRes.data.trending_series).map(normalizeMediaItem);
+      }
+      if (tSer.length === 0 && flatItems.length > 0) {
+        tSer = flatItems.filter((i) => i.type === 'series');
       }
       setTrendingSeries(tSer);
 
-      // Leaderboard items
-      let lead = [];
-      if (leadRes.success && leadRes.data) {
-        const raw = Array.isArray(leadRes.data) ? leadRes.data : leadRes.data.data || [];
-        lead = raw.map(normalizeMediaItem);
+      // 5. Leaderboard items
+      let lead = leadRes.success ? extractMediaArray(leadRes.data).map(normalizeMediaItem) : [];
+      if (lead.length === 0 && flatItems.length > 0) {
+        lead = flatItems.slice(0, 10);
       }
       setLeaderboardItems(lead);
 

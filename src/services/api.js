@@ -1,9 +1,16 @@
 // API Service for IDLIX REST API v3
 
-const DEFAULT_BASE_URL = 'http://localhost:3000';
-
 export const getApiBaseUrl = () => {
-  return localStorage.getItem('IDLIX_API_URL') || DEFAULT_BASE_URL;
+  const saved = localStorage.getItem('IDLIX_API_URL');
+  if (saved) return saved;
+
+  // In web production (when served by Nginx on port 80/443), use relative URL ''
+  // so Nginx reverse-proxies /api/ directly to http://api:3000 inside Docker network!
+  if (typeof window !== 'undefined' && window.location.port !== '5173') {
+    return '';
+  }
+
+  return 'http://localhost:3001';
 };
 
 export const setApiBaseUrl = (url) => {
@@ -12,11 +19,23 @@ export const setApiBaseUrl = (url) => {
   return cleanUrl;
 };
 
+// Array Extractor Helper to handle any API payload format
+export const extractMediaArray = (data) => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.movies)) return data.movies;
+  if (Array.isArray(data.series)) return data.series;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.results)) return data.results;
+  return [];
+};
+
 // Generic fetch wrapper
 const fetchApi = async (endpoint) => {
   const baseUrl = getApiBaseUrl();
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = `${baseUrl}${cleanEndpoint}`;
+  const url = baseUrl ? `${baseUrl}${cleanEndpoint}` : cleanEndpoint;
 
   try {
     const response = await fetch(url, {
@@ -39,7 +58,7 @@ const fetchApi = async (endpoint) => {
 
 // Health Check
 export const checkApiStatus = async () => {
-  const res = await fetchApi('/');
+  const res = await fetchApi('/api/home');
   return res;
 };
 
@@ -91,8 +110,16 @@ export const normalizeMediaItem = (item) => {
   if (!item) return null;
   
   const title = item.title || item.name || item.movie_title || item.series_title || 'Untitled';
-  const slug = item.slug || item.id || item.link?.split('/').filter(Boolean).pop() || title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   
+  let slug = item.slug || item.id;
+  if (!slug && item.link) {
+    const parts = item.link.split('/').filter(Boolean);
+    slug = parts[parts.length - 1];
+  }
+  if (!slug) {
+    slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  }
+
   // Type determination
   let type = item.type || item.media_type;
   if (!type) {
@@ -103,7 +130,7 @@ export const normalizeMediaItem = (item) => {
     }
   }
 
-  const poster = item.poster || item.poster_path || item.thumbnail || item.image || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=500&auto=format&fit=crop&q=80';
+  const poster = item.poster || item.poster_path || item.thumbnail || item.image || item.img || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=500&auto=format&fit=crop&q=80';
   const backdrop = item.backdrop || item.backdrop_path || item.banner || poster;
   const rating = item.rating || item.vote_average || item.score || '8.5';
   const year = item.year || item.release_year || (item.release_date ? new Date(item.release_date).getFullYear() : '2024');
