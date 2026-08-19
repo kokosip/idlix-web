@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Loader2, AlertCircle, RefreshCw, Film, Tv, ExternalLink, Copy, Check, MonitorPlay, Layers, Maximize2, Minimize2, ArrowLeft } from 'lucide-react';
 import Hls from 'hls.js';
-import { getMovieStream, getEpisodeStream, normalizeMediaItem } from '../services/api';
+import { getMovieStream, getEpisodeStream, normalizeMediaItem, getApiBaseUrl } from '../services/api';
 
 export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [streamData, setStreamData] = useState(null);
@@ -117,19 +117,94 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
   const rawType = (payload?.type || payload?.format || '').toLowerCase();
 
-  // Auto-detect iframe embed vs direct HLS video stream
+  // Strict iframe embed detection (prevent false positive on /v/ or json stream endpoints)
   const detectedIsIframe =
     rawType === 'iframe' ||
     rawType === 'embed' ||
-    streamUrl.includes('embed') ||
+    streamUrl.includes('/embed/') ||
     streamUrl.includes('player.php') ||
-    streamUrl.includes('vidsrc') ||
-    streamUrl.includes('/e/') ||
-    streamUrl.includes('/v/') ||
-    (!streamUrl.includes('.m3u8') && !streamUrl.includes('.mp4') && !streamUrl.includes('/hls/') && (streamUrl.startsWith('http://') || streamUrl.startsWith('https://')));
+    streamUrl.includes('vidsrc.me') ||
+    streamUrl.includes('vidsrc.to') ||
+    streamUrl.includes('2embed');
 
   const isEmbedIframe = playerMode === 'iframe' ? true : playerMode === 'hls' ? false : detectedIsIframe;
   const subtitlesList = payload?.subtitles || payload?.vtt_tracks || payload?.tracks || payload?.captions || [];
+
+  // Subtitle Blob Loader to bypass CORS restrictions and normalize VTT format
+  const [subBlobUrl, setSubBlobUrl] = useState('');
+
+  useEffect(() => {
+    if (!selectedSub) {
+      setSubBlobUrl('');
+      return;
+    }
+
+    let isMounted = true;
+    let createdUrl = '';
+
+    const fetchAndCreateBlob = async () => {
+      try {
+        const fullUrl = selectedSub.startsWith('http')
+          ? selectedSub
+          : `${getApiBaseUrl()}${selectedSub.startsWith('/') ? '' : '/'}${selectedSub}`;
+
+        const response = await fetch(fullUrl);
+        if (response.ok) {
+          let text = await response.text();
+          // Ensure WEBVTT header & convert SRT timestamp comma to dot if needed
+          if (!text.trim().startsWith('WEBVTT')) {
+            text = 'WEBVTT\n\n' + text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+          }
+          const blob = new Blob([text], { type: 'text/vtt' });
+          createdUrl = URL.createObjectURL(blob);
+          if (isMounted) {
+            setSubBlobUrl(createdUrl);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('[SubtitleLoader] Fetch failed, falling back to direct URL:', err);
+      }
+
+      if (isMounted) {
+        setSubBlobUrl(selectedSub);
+      }
+    };
+
+    fetchAndCreateBlob();
+
+    return () => {
+      isMounted = false;
+      if (createdUrl && createdUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [selectedSub]);
+
+  // Programmatic text track mode activation to ensure subtitles display
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const enableSubtitles = () => {
+      if (video.textTracks && video.textTracks.length > 0) {
+        for (let i = 0; i < video.textTracks.length; i++) {
+          video.textTracks[i].mode = 'showing';
+        }
+      }
+    };
+
+    video.addEventListener('canplay', enableSubtitles);
+    video.addEventListener('loadedmetadata', enableSubtitles);
+    
+    const timer = setTimeout(enableSubtitles, 400);
+
+    return () => {
+      video.removeEventListener('canplay', enableSubtitles);
+      video.removeEventListener('loadedmetadata', enableSubtitles);
+      clearTimeout(timer);
+    };
+  }, [subBlobUrl, streamUrl]);
 
   // HLS.js initialization for .m3u8 streams
   useEffect(() => {
@@ -196,49 +271,76 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
   if (!displayData) return null;
 
-  //Edge-to-Edge Browser Fullscreen View
-  if (isBrowserFullscreen) {
-    return (
+  return (
+    <div
+      className={
+        isBrowserFullscreen
+          ? `fixed inset-0 z-[100] bg-black w-screen h-screen flex flex-col justify-center items-center overflow-hidden select-none ${
+              controlsVisible ? '' : 'cursor-none'
+            }`
+          : 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-lg animate-fade-in'
+      }
+      onMouseMove={isBrowserFullscreen ? resetControlsTimeout : undefined}
+      onClick={isBrowserFullscreen ? resetControlsTimeout : undefined}
+    >
       <div
-        className={`fixed inset-0 z-[100] bg-black w-screen h-screen flex flex-col justify-center items-center overflow-hidden select-none ${controlsVisible ? '' : 'cursor-none'
-          }`}
-        onMouseMove={resetControlsTimeout}
-        onClick={resetControlsTimeout}
+        className={
+          isBrowserFullscreen
+            ? 'relative w-full h-full max-w-none rounded-none border-0 flex flex-col flex-1 overflow-hidden bg-black'
+            : 'relative w-full max-w-5xl glass-panel rounded-3xl overflow-hidden shadow-2xl border border-dark-border flex flex-col my-auto'
+        }
       >
-        {/* Floating Top Header Overlay*/}
+        {/* Header Bar (Floating Overlay for Fullscreen, Card Header for Normal) */}
         <div
-          className={`absolute top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between z-30 bg-gradient-to-b from-black/90 via-black/50 to-transparent transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
+          className={
+            isBrowserFullscreen
+              ? `absolute top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between z-30 bg-gradient-to-b from-black/90 via-black/50 to-transparent transition-opacity duration-300 pointer-events-none ${
+                  controlsVisible ? 'opacity-100' : 'opacity-0'
+                }`
+              : 'p-3 sm:p-4 bg-dark-card border-b border-dark-border flex items-center justify-between gap-4 shrink-0'
+          }
         >
-          <div className="flex items-center gap-4 min-w-0">
-            <button
-              onClick={() => setIsBrowserFullscreen(false)}
-              className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all group"
-              title="Keluar Fullscreen (Esc)"
-            >
-              <ArrowLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
-            </button>
+          <div className={`flex items-center gap-3 min-w-0 ${isBrowserFullscreen ? 'pointer-events-auto' : ''}`}>
+            {isBrowserFullscreen ? (
+              <button
+                onClick={() => setIsBrowserFullscreen(false)}
+                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all group"
+                title="Keluar Fullscreen (Esc)"
+              >
+                <ArrowLeft className="w-6 h-6 group-hover:-translate-x-0.5 transition-transform" />
+              </button>
+            ) : (
+              <div className="p-2 rounded-xl bg-brand-500/10 text-brand-500 border border-brand-500/20">
+                {isSeries ? <Tv className="w-5 h-5" /> : <Film className="w-5 h-5" />}
+              </div>
+            )}
+
             <div className="min-w-0">
-              <h2 className="text-base sm:text-xl font-black text-white truncate drop-shadow-md">
+              <h3 className={isBrowserFullscreen ? 'text-base sm:text-xl font-black text-white truncate drop-shadow-md' : 'text-sm sm:text-base font-extrabold text-white truncate'}>
                 {displayData.title}
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-300 font-medium truncate">
+              </h3>
+              <p className={isBrowserFullscreen ? 'text-xs sm:text-sm text-gray-300 font-medium truncate' : 'text-xs text-gray-400'}>
                 {isSeries ? `Season ${seasonNum} • Episode ${episodeNum}` : `Movie • ${displayData.year}`}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 ${isBrowserFullscreen ? 'pointer-events-auto' : ''}`}>
             {streamUrl && (
               <>
                 <a
                   href={streamUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all"
+                  className={
+                    isBrowserFullscreen
+                      ? 'p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all'
+                      : 'flex items-center gap-1.5 px-3 py-2 rounded-lg bg-dark-surface border border-dark-border text-xs font-semibold text-gray-200 hover:text-white hover:border-brand-500 transition-all'
+                  }
                   title="Buka Stream URL di Tab Baru Browser"
                 >
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className={isBrowserFullscreen ? 'w-4 h-4' : 'w-3.5 h-3.5 text-brand-500'} />
+                  {!isBrowserFullscreen && <span className="hidden sm:inline">Buka Tab Baru</span>}
                 </a>
 
                 <button
@@ -247,206 +349,80 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   }}
-                  className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all"
+                  className={
+                    isBrowserFullscreen
+                      ? 'p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all'
+                      : 'flex items-center gap-1.5 px-3 py-2 rounded-lg bg-dark-surface border border-dark-border text-xs font-semibold text-gray-200 hover:text-white hover:border-brand-500 transition-all'
+                  }
                   title="Salin Direct Stream URL"
                 >
-                  {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copied ? (
+                    <Check className={isBrowserFullscreen ? 'w-4 h-4 text-emerald-400' : 'w-3.5 h-3.5 text-emerald-400'} />
+                  ) : (
+                    <Copy className={isBrowserFullscreen ? 'w-4 h-4' : 'w-3.5 h-3.5 text-gray-400'} />
+                  )}
+                  {!isBrowserFullscreen && <span className="hidden sm:inline">{copied ? 'Tersalin!' : 'Salin URL'}</span>}
                 </button>
               </>
             )}
 
             <button
               onClick={() => setPlayerMode((prev) => (prev === 'iframe' ? 'hls' : 'iframe'))}
-              className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md text-xs font-semibold transition-all flex items-center gap-1.5"
+              className={
+                isBrowserFullscreen
+                  ? 'px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md text-xs font-semibold transition-all flex items-center gap-1.5'
+                  : 'flex items-center gap-1.5 px-2.5 py-1 rounded bg-dark-surface border border-dark-border text-[11px] text-gray-300 hover:text-white hover:border-brand-500 transition-all'
+              }
               title="Ganti Player Mode"
             >
-              <Layers className="w-3.5 h-3.5 text-brand-400" />
+              <Layers className={isBrowserFullscreen ? 'w-3.5 h-3.5 text-brand-400' : 'w-3 h-3 text-brand-500'} />
               <span className="hidden sm:inline">{isEmbedIframe ? 'Iframe' : 'HLS Direct'}</span>
             </button>
 
             <button
-              onClick={() => setIsBrowserFullscreen(false)}
-              className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all"
-              title="Keluar Fullscreen Browser"
+              onClick={() => setIsBrowserFullscreen(!isBrowserFullscreen)}
+              className={
+                isBrowserFullscreen
+                  ? 'p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all'
+                  : 'p-2 rounded-lg bg-dark-surface border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all'
+              }
+              title={isBrowserFullscreen ? 'Keluar Fullscreen (Esc)' : 'Fullscreen Browser Netflix Style'}
             >
-              <Minimize2 className="w-4 h-4" />
+              {isBrowserFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
-            <button
-              onClick={onClose}
-              className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all"
-              title="Tutup Player"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
 
-        {/* Video Viewport (100% Browser Screen) */}
-        <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center p-8 gap-3 text-gray-400">
-              <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
-              <span className="text-sm font-semibold">Memproses dan Ekstraksi Video Stream...</span>
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center p-8 gap-4 text-center max-w-md">
-              <div className="p-3 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20">
-                <AlertCircle className="w-8 h-8" />
-              </div>
-              <h4 className="text-sm font-bold text-white mb-1">Gagal Memuat Stream Video</h4>
-              <p className="text-xs text-gray-400">{error}</p>
+            {!isBrowserFullscreen && (
               <button
                 onClick={fetchStream}
-                className="px-5 py-2.5 rounded-full bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs transition-all"
+                className="p-2 rounded-lg bg-dark-surface border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all"
+                title="Muat Ulang Stream"
               >
-                Coba Lagi
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-brand-500' : ''}`} />
               </button>
-            </div>
-          ) : isEmbedIframe ? (
-            <iframe
-              src={streamUrl}
-              title={displayData.title}
-              className="w-full h-full border-0"
-              allowFullScreen
-              referrerPolicy="no-referrer"
-              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-            />
-          ) : (
-            <video
-              ref={videoRef}
-              controls
-              autoPlay
-              controlsList="nodownload"
-              playsInline
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-contain"
-            >
-              {selectedSub && (
-                <track
-                  kind="subtitles"
-                  src={selectedSub}
-                  srcLang="id"
-                  label="Indonesian"
-                  default
-                />
-              )}
-            </video>
-          )}
-        </div>
-
-        {/* Floating Bottom Footer Overlay (Netflix Style) */}
-        {!isLoading && !error && streamData && (
-          <div
-            className={`absolute bottom-0 left-0 right-0 p-4 sm:p-6 flex flex-wrap items-center justify-between gap-3 z-30 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              }`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold uppercase tracking-wider backdrop-blur-md">
-                {isEmbedIframe ? 'Iframe Stream' : 'Direct HLS (.m3u8)'}
-              </span>
-            </div>
-
-            {subtitlesList.length > 0 && (
-              <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                <span className="text-xs text-gray-300 font-medium">Subtitle:</span>
-                <select
-                  value={selectedSub}
-                  onChange={(e) => setSelectedSub(e.target.value)}
-                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer"
-                >
-                  <option value="" className="bg-dark-card text-white">(Tanpa Subtitle)</option>
-                  {subtitlesList.map((sub, idx) => (
-                    <option key={idx} value={sub.file || sub.url || sub.src} className="bg-dark-card text-white">
-                      {sub.label || sub.language || `Trek ${idx + 1}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Standard Modal View
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-lg animate-fade-in">
-      <div className="relative w-full max-w-5xl glass-panel rounded-3xl overflow-hidden shadow-2xl border border-dark-border flex flex-col my-auto">
-
-        {/* Modal Header Bar */}
-        <div className="p-3 sm:p-4 bg-dark-card border-b border-dark-border flex items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-xl bg-brand-500/10 text-brand-500 border border-brand-500/20">
-              {isSeries ? <Tv className="w-5 h-5" /> : <Film className="w-5 h-5" />}
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-sm sm:text-base font-extrabold text-white truncate">
-                {displayData.title}
-              </h3>
-              <p className="text-xs text-gray-400">
-                {isSeries ? `Season ${seasonNum} • Episode ${episodeNum}` : `Movie • ${displayData.year}`}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {streamUrl && (
-              <>
-                <a
-                  href={streamUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-dark-surface border border-dark-border text-xs font-semibold text-gray-200 hover:text-white hover:border-brand-500 transition-all"
-                  title="Buka Stream URL di Tab Baru Browser"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-brand-500" />
-                  <span className="hidden sm:inline">Buka Tab Baru</span>
-                </a>
-
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(streamUrl);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-dark-surface border border-dark-border text-xs font-semibold text-gray-200 hover:text-white hover:border-brand-500 transition-all"
-                  title="Salin Direct Stream URL"
-                >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-gray-400" />}
-                  <span className="hidden sm:inline">{copied ? 'Tersalin!' : 'Salin URL'}</span>
-                </button>
-              </>
             )}
 
-            {/* Browser Fullscreen Toggle Button */}
-            <button
-              onClick={() => setIsBrowserFullscreen(true)}
-              className="p-2 rounded-lg bg-dark-surface border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all"
-              title="Fullscreen Browser Netflix Style (Seluas Window Browser)"
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={fetchStream}
-              className="p-2 rounded-lg bg-dark-surface border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all"
-              title="Muat Ulang Stream"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-brand-500' : ''}`} />
-            </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg bg-dark-surface border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all"
+              className={
+                isBrowserFullscreen
+                  ? 'p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all'
+                  : 'p-2 rounded-lg bg-dark-surface border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all'
+              }
               title="Tutup Player"
             >
-              <X className="w-5 h-5" />
+              <X className={isBrowserFullscreen ? 'w-5 h-5' : 'w-5 h-5'} />
             </button>
           </div>
         </div>
 
-        {/* Main Video Viewport */}
-        <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden">
+        {/* Video Viewport (Single Reused DOM Element) */}
+        <div
+          className={
+            isBrowserFullscreen
+              ? 'relative w-full h-full bg-black flex items-center justify-center overflow-hidden'
+              : 'relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden'
+          }
+        >
           {isLoading ? (
             <div className="flex flex-col items-center justify-center p-8 gap-3 text-gray-400">
               <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
@@ -493,20 +469,22 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
             />
           ) : (
-            /* HTML5 / HLS.js Video Player */
+            /* HTML5 / HLS.js Video Player (100% Shared Single Instance) */
             <video
               ref={videoRef}
               controls
               autoPlay
               controlsList="nodownload"
               playsInline
+              crossOrigin="anonymous"
               referrerPolicy="no-referrer"
               className="w-full h-full object-contain"
             >
-              {selectedSub && (
+              {subBlobUrl && (
                 <track
+                  key={subBlobUrl}
                   kind="subtitles"
-                  src={selectedSub}
+                  src={subBlobUrl}
                   srcLang="id"
                   label="Indonesian"
                   default
@@ -517,10 +495,18 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           )}
         </div>
 
-        {/* Video Player Footer & Subtitle Selector */}
+        {/* Video Player Footer Bar */}
         {!isLoading && !error && streamData && (
-          <div className="p-3 sm:p-4 bg-dark-card border-t border-dark-border flex flex-wrap items-center justify-between gap-3 text-xs text-gray-300 shrink-0">
-            <div className="flex items-center gap-3">
+          <div
+            className={
+              isBrowserFullscreen
+                ? `absolute bottom-0 left-0 right-0 p-4 sm:p-6 flex flex-wrap items-center justify-between gap-3 z-30 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300 pointer-events-none ${
+                    controlsVisible ? 'opacity-100' : 'opacity-0'
+                  }`
+                : 'p-3 sm:p-4 bg-dark-card border-t border-dark-border flex flex-wrap items-center justify-between gap-3 text-xs text-gray-300 shrink-0'
+            }
+          >
+            <div className={`flex items-center gap-3 ${isBrowserFullscreen ? 'pointer-events-auto' : ''}`}>
               <div className="flex items-center gap-2">
                 <MonitorPlay className="w-4 h-4 text-brand-500" />
                 <span className="font-semibold text-white">Stream Status:</span>
@@ -528,44 +514,30 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                   {isEmbedIframe ? 'Iframe Stream' : 'Direct HLS (.m3u8)'}
                 </span>
               </div>
-
-              {/* Mode Toggle Button */}
-              {streamUrl && (
-                <button
-                  onClick={() => {
-                    setPlayerMode((prev) => (prev === 'iframe' ? 'hls' : 'iframe'));
-                  }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-dark-surface border border-dark-border text-[11px] text-gray-300 hover:text-white hover:border-brand-500 transition-all"
-                  title="Ganti antara HLS Direct Video dan Iframe Embed Mode"
-                >
-                  <Layers className="w-3 h-3 text-brand-500" />
-                  <span>Ganti Player Mode</span>
-                </button>
-              )}
-
-              {/* Browser Fullscreen Footer Shortcut */}
-              <button
-                onClick={() => setIsBrowserFullscreen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-dark-surface border border-dark-border text-[11px] text-gray-300 hover:text-white hover:border-brand-500 transition-all"
-                title="Fullscreen"
-              >
-                <Maximize2 className="w-3 h-3 text-brand-500" />
-                <span>Fullscreen</span>
-              </button>
             </div>
 
-            {/* Subtitle selector if vtt tracks available */}
+            {/* Subtitle Selector */}
             {subtitlesList.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">Subtitle:</span>
+              <div
+                className={
+                  isBrowserFullscreen
+                    ? 'flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto'
+                    : 'flex items-center gap-2'
+                }
+              >
+                <span className="text-gray-300 font-medium">Subtitle:</span>
                 <select
                   value={selectedSub}
                   onChange={(e) => setSelectedSub(e.target.value)}
-                  className="bg-dark-surface border border-dark-border text-white text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:border-brand-500"
+                  className={
+                    isBrowserFullscreen
+                      ? 'bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer'
+                      : 'bg-dark-surface border border-dark-border text-white text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:border-brand-500'
+                  }
                 >
-                  <option value="">(Tanpa Subtitle)</option>
+                  <option value="" className="bg-dark-card text-white">(Tanpa Subtitle)</option>
                   {subtitlesList.map((sub, idx) => (
-                    <option key={idx} value={sub.file || sub.url || sub.src}>
+                    <option key={idx} value={sub.file || sub.url || sub.src} className="bg-dark-card text-white">
                       {sub.label || sub.language || `Trek ${idx + 1}`}
                     </option>
                   ))}
@@ -574,10 +546,10 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             )}
           </div>
         )}
-
       </div>
     </div>
   );
 }
+
 
 
