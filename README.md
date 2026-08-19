@@ -4,7 +4,8 @@ A high-performance, modern streaming web client built with **React 18**, **Tailw
 
 > 📡 **Backend API Repository**: [github.com/kokosip/idlix-api](https://github.com/kokosip/idlix-api.git)
 
-![IDLIX Web Showcase](https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=1200&auto=format&fit=crop&q=80)
+> ⚠️ **Disclaimer**:
+> This application is strictly a **client-side web interface**. It **DOES NOT store, host, or distribute** any movies or media files in any form. This project was developed solely for **educational, learning, and technology exploration purposes** (React 18, Tailwind CSS, & HLS.js). Any misuse of this application is entirely the responsibility of the end user, and the developer holds no liability.
 
 ---
 
