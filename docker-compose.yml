@@ -1,0 +1,24 @@
+services:
+  # Backend Scraper API Service (from GitHub repository)
+  api:
+    build:
+      context: https://github.com/kokosip/idlix-api.git#main
+    container_name: idlix-api-backend
+    restart: always
+    ports:
+      - "3001:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+
+  # Frontend Web Client Service
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: idlix-web-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - api

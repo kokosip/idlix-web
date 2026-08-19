@@ -72,7 +72,7 @@ This frontend fully covers the IDLIX REST API v3 endpoints:
 - [Node.js](https://nodejs.org/) (v18.0.0 or higher)
 - IDLIX REST API Server running (usually on `http://localhost:3000`)
 
-### Installation & Running
+### Option A: Running Locally with Node.js & Vite
 
 1. **Clone or Navigate to the Workspace**:
    ```bash
@@ -94,6 +94,23 @@ This frontend fully covers the IDLIX REST API v3 endpoints:
    ```bash
    npm run build
    ```
+
+### Option B: Full Deployment with Docker Compose (Frontend + Backend)
+
+Deploy both `idlix-web` (frontend) and `idlix-api` (backend) together in a single command:
+
+```bash
+# Build & start containers in detached mode
+docker compose up -d --build
+```
+
+- **Frontend App**: Accessible at `http://localhost` (Port 80)
+- **Backend API**: Accessible at `http://localhost:3000` (Port 3000)
+
+To stop the deployment:
+```bash
+docker compose down
+```
 
 ---
 
