@@ -136,6 +136,7 @@ export const normalizeMediaItem = (item) => {
   const year = item.year || item.release_year || (item.release_date ? new Date(item.release_date).getFullYear() : '2024');
   const quality = item.quality || item.resolution || 'HD';
   const duration = item.duration || item.runtime || (type === 'series' ? 'Series' : '120 min');
+  const synopsis = item.overview || item.synopsis || item.description || item.storyline || 'Tidak ada deskripsi tersedia.';
 
   return {
     ...item,
@@ -150,6 +151,6 @@ export const normalizeMediaItem = (item) => {
     quality,
     duration,
     genres: item.genres || item.genre || [],
-    synopsis: item.synopsis || item.overview || item.description || 'Tidak ada deskripsi tersedia.',
+    synopsis,
   };
 };

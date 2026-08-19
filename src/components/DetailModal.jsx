@@ -11,7 +11,8 @@ import {
   Film, 
   Check,
   Loader2,
-  ListVideo
+  ListVideo,
+  Users
 } from 'lucide-react';
 import { getMovieDetail, getSeriesDetail, getSeasonDetail, normalizeMediaItem } from '../services/api';
 import { useWatchlist } from '../context/WatchlistContext';
@@ -41,22 +42,20 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
 
       if (isMounted) {
         if (res.success && res.data) {
-          const merged = { ...normalized, ...res.data };
+          // Flatten res.data properties into merged detail object
+          const detailObj = res.data.data || res.data;
+          const merged = { ...normalized, ...detailObj };
+          
+          // Ensure synopsis is populated from overview if needed
+          merged.synopsis = detailObj.overview || detailObj.synopsis || merged.synopsis;
           setDetail(merged);
 
           // Handle series seasons & initial episode population
           if (merged.type === 'series') {
-            const initialSeasons = merged.seasons || merged.season_list || [1];
-            const firstSeasonNum = Array.isArray(initialSeasons) 
-              ? (typeof initialSeasons[0] === 'object' ? initialSeasons[0].season_number || 1 : initialSeasons[0]) 
-              : 1;
-            
+            const seasonsArr = getSeasonNumbers(merged);
+            const firstSeasonNum = seasonsArr[0] || 1;
             setSelectedSeason(firstSeasonNum);
-            if (merged.episodes && Array.isArray(merged.episodes) && merged.episodes.length > 0) {
-              setEpisodes(merged.episodes);
-            } else {
-              fetchSeasonEpisodes(normalized.slug, firstSeasonNum);
-            }
+            loadEpisodesForSeason(merged, firstSeasonNum);
           }
         } else {
           setDetail(normalized);
@@ -69,11 +68,33 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
     return () => { isMounted = false; };
   }, [media]);
 
-  const fetchSeasonEpisodes = async (slug, seasonNum) => {
+  const getSeasonNumbers = (mediaDetail) => {
+    if (!mediaDetail) return [1];
+    if (Array.isArray(mediaDetail.seasons) && mediaDetail.seasons.length > 0) {
+      return mediaDetail.seasons.map((s) => (typeof s === 'object' ? s.seasonNumber || s.season_number || 1 : s));
+    }
+    const count = mediaDetail.total_seasons || mediaDetail.seasons_count || 1;
+    return Array.from({ length: Math.max(1, count) }, (_, i) => i + 1);
+  };
+
+  const loadEpisodesForSeason = async (mediaDetail, seasonNum) => {
+    // Check if episodes already exist in detail.seasons array
+    if (Array.isArray(mediaDetail?.seasons)) {
+      const matchedSeasonObj = mediaDetail.seasons.find(
+        (s) => typeof s === 'object' && (s.seasonNumber === seasonNum || s.season_number === seasonNum)
+      );
+      if (matchedSeasonObj && Array.isArray(matchedSeasonObj.episodes) && matchedSeasonObj.episodes.length > 0) {
+        setEpisodes(matchedSeasonObj.episodes);
+        return;
+      }
+    }
+
+    // Otherwise fetch via season detail API endpoint
     setIsLoadingSeason(true);
-    const res = await getSeasonDetail(slug, seasonNum);
+    const res = await getSeasonDetail(mediaDetail.slug, seasonNum);
     if (res.success && res.data) {
-      const epList = res.data.episodes || res.data || [];
+      const seasonData = res.data.data || res.data;
+      const epList = seasonData.episodes || seasonData || [];
       setEpisodes(Array.isArray(epList) ? epList : []);
     } else {
       setEpisodes([]);
@@ -83,8 +104,8 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
 
   const handleSeasonChange = (seasonNum) => {
     setSelectedSeason(seasonNum);
-    if (detail) {
-      fetchSeasonEpisodes(detail.slug, seasonNum);
+    if (displayData) {
+      loadEpisodesForSeason(displayData, seasonNum);
     }
   };
 
@@ -92,11 +113,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
 
   const displayData = detail || normalizeMediaItem(media);
   const isBookmarked = isInWatchlist(displayData.slug);
-
-  // Available seasons list
-  const seasonsCount = displayData.total_seasons || displayData.seasons_count || 
-    (Array.isArray(displayData.seasons) ? displayData.seasons.length : 1);
-  const seasonsList = Array.from({ length: Math.max(1, seasonsCount) }, (_, i) => i + 1);
+  const seasonsList = getSeasonNumbers(displayData);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-10 overflow-y-auto bg-black/80 backdrop-blur-md animate-fade-in">
@@ -125,7 +142,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
             <div className="absolute inset-0 bg-gradient-to-t from-dark-surface via-dark-surface/40 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-r from-dark-surface via-transparent to-transparent" />
             
-            {/* Quick Title overlay on banner */}
+            {/* Title overlay on banner */}
             <div className="absolute bottom-4 left-6 right-6 flex items-end justify-between z-10">
               <div className="flex items-center gap-4">
                 <img
@@ -184,7 +201,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                   className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-brand-500 hover:bg-brand-600 text-white font-extrabold text-xs sm:text-sm shadow-glow-red transition-all"
                 >
                   <Play className="w-4 h-4 fill-white" />
-                  <span>Tonton Film</span>
+                  <span>{displayData.type === 'series' ? 'Putar Episode 1' : 'Tonton Film'}</span>
                 </button>
                 <button
                   onClick={() => toggleWatchlist(displayData)}
@@ -204,7 +221,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
             <div>
               <h3 className="text-sm font-bold text-gray-200 mb-2 uppercase tracking-wider">Sinopsis</h3>
               <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-                {displayData.synopsis}
+                {displayData.synopsis || displayData.overview || 'Tidak ada sinopsis yang tersedia.'}
               </p>
             </div>
 
@@ -225,10 +242,40 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
               </div>
             )}
 
+            {/* Cast Members */}
+            {displayData.cast && Array.isArray(displayData.cast) && displayData.cast.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  <Users className="w-4 h-4 text-brand-500" />
+                  <span>Pemeran Utama (Cast)</span>
+                </div>
+                <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
+                  {displayData.cast.map((actor, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 rounded-xl bg-dark-card border border-dark-border flex-shrink-0 min-w-[140px]">
+                      {actor.image && (
+                        <img 
+                          src={actor.image} 
+                          alt={actor.name} 
+                          className="w-8 h-8 rounded-full object-cover bg-dark-surface"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      )}
+                      <div className="min-w-0 text-xs">
+                        <div className="font-bold text-white truncate">{actor.name}</div>
+                        {actor.character && (
+                          <div className="text-[10px] text-gray-400 truncate">{actor.character}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* TV Series Episode & Season Selector */}
             {displayData.type === 'series' && (
               <div className="space-y-4 pt-4 border-t border-dark-border/60">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-white font-bold text-base">
                     <ListVideo className="w-5 h-5 text-brand-500" />
                     <span>Daftar Episode</span>
@@ -240,9 +287,9 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                       <button
                         key={sNum}
                         onClick={() => handleSeasonChange(sNum)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                           selectedSeason === sNum
-                            ? 'bg-brand-500 text-white shadow-sm'
+                            ? 'bg-brand-500 text-white shadow-glow-red'
                             : 'bg-dark-card text-gray-400 hover:text-white border border-dark-border'
                         }`}
                       >
@@ -261,9 +308,11 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                 ) : episodes.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {episodes.map((ep, idx) => {
-                      const epNum = ep.episode_number || ep.episode || idx + 1;
+                      const epNum = ep.episodeNumber || ep.episode_number || ep.episode || idx + 1;
                       const epTitle = ep.title || ep.name || `Episode ${epNum}`;
-                      const epThumb = ep.still_path || ep.thumbnail || ep.poster || displayData.backdrop;
+                      const epOverview = ep.overview || ep.synopsis || ep.description || 'Klik untuk memutar episode ini.';
+                      const epThumb = ep.stillPath || ep.still_path || ep.thumbnail || ep.poster || displayData.backdrop;
+                      const epRuntime = ep.runtime ? `${ep.runtime} min` : null;
 
                       return (
                         <div
@@ -271,7 +320,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                           onClick={() => onPlayStream(displayData, { season: selectedSeason, episode: epNum })}
                           className="group p-3 rounded-xl bg-dark-card border border-dark-border hover:border-brand-500/60 hover:bg-dark-hover transition-all cursor-pointer flex items-center gap-3"
                         >
-                          <div className="relative w-20 h-14 rounded-lg overflow-hidden bg-dark-surface flex-shrink-0">
+                          <div className="relative w-24 h-16 rounded-lg overflow-hidden bg-dark-surface flex-shrink-0">
                             <img
                               src={epThumb}
                               alt={epTitle}
@@ -281,18 +330,23 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                               }}
                             />
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-brand-500/30 transition-colors">
-                              <Play className="w-4 h-4 fill-white text-white" />
+                              <Play className="w-5 h-5 fill-white text-white" />
                             </div>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-[11px] text-brand-500 font-bold">
-                              Eps {epNum}
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[11px] text-brand-500 font-bold">
+                                Episode {epNum}
+                              </span>
+                              {epRuntime && (
+                                <span className="text-[10px] text-gray-400">{epRuntime}</span>
+                              )}
                             </div>
                             <h4 className="text-xs font-bold text-white truncate group-hover:text-brand-500 transition-colors">
                               {epTitle}
                             </h4>
-                            <p className="text-[10px] text-gray-400 line-clamp-1 mt-0.5">
-                              {ep.overview || ep.synopsis || 'Klik untuk memutar episode ini.'}
+                            <p className="text-[10px] text-gray-400 line-clamp-2 mt-0.5 leading-snug">
+                              {epOverview}
                             </p>
                           </div>
                         </div>
@@ -301,7 +355,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                   </div>
                 ) : (
                   <div className="py-6 text-center text-xs text-gray-400 bg-dark-card/50 rounded-xl border border-dashed border-dark-border">
-                    Belum ada episode khusus yang dimuat untuk Season {selectedSeason}. Memutar otomatis Episode 1.
+                    Belum ada daftar episode khusus yang dimuat untuk Season {selectedSeason}. Klik "Putar Episode 1" untuk memutar stream secara langsung.
                   </div>
                 )}
               </div>
