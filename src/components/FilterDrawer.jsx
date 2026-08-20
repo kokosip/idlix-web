@@ -85,18 +85,24 @@ export default function FilterDrawer({ isOpen, onClose, onSelectCategory }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-md h-full bg-dark-base border-l border-dark-border shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-stretch justify-center sm:justify-end bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="relative w-full max-w-md h-[88vh] sm:h-full bg-dark-base rounded-t-3xl sm:rounded-none border-t sm:border-t-0 sm:border-l border-dark-border shadow-2xl flex flex-col overflow-hidden">
         
+        {/* Mobile Drag Indicator */}
+        <div className="sm:hidden w-full pt-2 pb-1 bg-dark-surface flex justify-center border-b border-white/5">
+          <div className="w-12 h-1.5 rounded-full bg-gray-600/60" />
+        </div>
+
         {/* Header */}
-        <div className="p-5 border-b border-dark-border flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white font-extrabold text-lg">
+        <div className="p-4 sm:p-5 border-b border-dark-border flex items-center justify-between">
+          <div className="flex items-center gap-2 text-white font-extrabold text-base sm:text-lg">
             <Filter className="w-5 h-5 text-brand-500" />
             <span>Jelajahi & Filter Konten</span>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg bg-dark-card text-gray-400 hover:text-white hover:bg-dark-hover transition-all"
+            className="p-2 rounded-lg bg-dark-card text-gray-400 hover:text-white hover:bg-dark-hover transition-all active:scale-95"
+            aria-label="Tutup filter"
           >
             <X className="w-5 h-5" />
           </button>

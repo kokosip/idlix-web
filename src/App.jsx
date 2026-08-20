@@ -11,6 +11,7 @@ import DetailModal from './components/DetailModal';
 import VideoPlayerModal from './components/VideoPlayerModal';
 import ApiConfigModal from './components/ApiConfigModal';
 import FilterDrawer from './components/FilterDrawer';
+import MobileBottomNav from './components/MobileBottomNav';
 
 import { WatchlistProvider } from './context/WatchlistContext';
 import { checkApiStatus } from './services/api';
@@ -67,7 +68,7 @@ export default function App() {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 md:pb-6">
           {activeTab === 'home' && (
             <HomeView 
               onSelectMedia={(media) => setSelectedMedia(media)}
@@ -109,7 +110,7 @@ export default function App() {
         </main>
 
         {/* Footer */}
-        <footer className="w-full glass-panel border-t border-dark-border/60 py-8 mt-12">
+        <footer className="w-full glass-panel border-t border-dark-border/60 py-8 mt-12 mb-16 md:mb-0">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-400">
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-white">IDLIX Stream Web</span>
@@ -121,6 +122,15 @@ export default function App() {
             </div>
           </div>
         </footer>
+
+        {/* Mobile Bottom Navigation */}
+        <MobileBottomNav
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setActiveTab(tab);
+            setSelectedCategory(null);
+          }}
+        />
 
         {/* Modals & Drawers */}
         {selectedMedia && (

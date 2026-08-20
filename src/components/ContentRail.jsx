@@ -64,17 +64,17 @@ export default function ContentRail({
       {/* Rail Container */}
       <div 
         ref={scrollRef}
-        className="flex gap-4 overflow-x-auto hide-scrollbar scroll-smooth pb-4 px-4 sm:px-0 -mx-4 sm:mx-0"
+        className="flex gap-3 sm:gap-4 overflow-x-auto hide-scrollbar scroll-smooth snap-x snap-mandatory pb-4 px-4 sm:px-0 -mx-4 sm:mx-0"
       >
         {isLoading ? (
           Array.from({ length: 6 }).map((_, idx) => (
-            <div key={idx} className="w-36 sm:w-44 md:w-52 flex-shrink-0">
+            <div key={idx} className="w-32 sm:w-44 md:w-52 flex-shrink-0 snap-start">
               <SkeletonCard />
             </div>
           ))
         ) : items && items.length > 0 ? (
           items.map((item) => (
-            <div key={item.slug || item.id} className="w-36 sm:w-44 md:w-52 flex-shrink-0">
+            <div key={item.slug || item.id} className="w-32 sm:w-44 md:w-52 flex-shrink-0 snap-start">
               <ContentCard media={item} onSelect={onSelectMedia} />
             </div>
           ))

@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Info, Bookmark, Star, ChevronLeft, ChevronRight, Sparkles, Check } from 'lucide-react';
 import { useWatchlist } from '../context/WatchlistContext';
 
 export default function HeroBanner({ items = [], onSelectMedia, onPlayStream }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
+  
+  // Touch Swipe Gesture State
+  const touchStartX = useRef(null);
+  const touchEndX = useRef(null);
 
   useEffect(() => {
     if (!items || items.length <= 1) return;
@@ -31,11 +35,41 @@ export default function HeroBanner({ items = [], onSelectMedia, onPlayStream }) 
   const nextSlide = () => setCurrentIndex((prev) => (prev + 1) % items.length);
   const prevSlide = () => setCurrentIndex((prev) => (prev - 1 + items.length) % items.length);
 
+  // Touch handlers
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current) return;
+    const distance = touchStartX.current - touchEndX.current;
+    const isSwipeLeft = distance > 50;
+    const isSwipeRight = distance < -50;
+
+    if (isSwipeLeft) {
+      nextSlide();
+    } else if (isSwipeRight) {
+      prevSlide();
+    }
+
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+
   return (
-    <div className="relative w-full h-[480px] sm:h-[550px] md:h-[600px] rounded-3xl overflow-hidden shadow-2xl border border-dark-border/60 group">
+    <div 
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="relative w-full h-[480px] sm:h-[550px] md:h-[600px] rounded-3xl overflow-hidden shadow-2xl border border-dark-border/60 group select-none"
+    >
       
       {/* Backdrop Image */}
-      <div className="absolute inset-0 bg-dark-base">
+      <div className="absolute inset-0 bg-dark-base pointer-events-none">
         <img
           key={item.slug}
           src={item.backdrop || item.poster}
@@ -52,10 +86,10 @@ export default function HeroBanner({ items = [], onSelectMedia, onPlayStream }) 
       </div>
 
       {/* Content Container */}
-      <div className="relative h-full max-w-7xl mx-auto px-6 sm:px-10 flex flex-col justify-end pb-12 z-10">
+      <div className="relative h-full max-w-7xl mx-auto px-5 sm:px-10 flex flex-col justify-end pb-10 sm:pb-12 z-10">
         
         {/* Badges row */}
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <div className="flex items-center gap-2 mb-2 sm:mb-3 flex-wrap">
           <span className="px-2.5 py-1 text-xs font-black uppercase tracking-wider rounded-md bg-brand-500 text-white shadow-glow-red flex items-center gap-1">
             <Sparkles className="w-3.5 h-3.5 fill-white" />
             Featured #{currentIndex + 1}
@@ -73,36 +107,36 @@ export default function HeroBanner({ items = [], onSelectMedia, onPlayStream }) 
         </div>
 
         {/* Title */}
-        <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-none mb-3 drop-shadow-md max-w-3xl">
+        <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-tight mb-2 sm:mb-3 drop-shadow-md max-w-3xl">
           {item.title}
         </h1>
 
         {/* Overview Synopsis */}
-        <p className="text-xs sm:text-sm text-gray-300 line-clamp-2 sm:line-clamp-3 max-w-2xl mb-6 font-normal leading-relaxed">
+        <p className="text-xs sm:text-sm text-gray-300 line-clamp-2 sm:line-clamp-3 max-w-2xl mb-5 font-normal leading-relaxed">
           {item.synopsis}
         </p>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <button
             onClick={() => onPlayStream(item)}
-            className="flex items-center gap-2 px-6 py-3 rounded-full bg-brand-500 hover:bg-brand-600 text-white font-extrabold text-xs sm:text-sm shadow-glow-red hover:scale-105 active:scale-95 transition-all"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 sm:px-6 py-3 rounded-full bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-extrabold text-xs sm:text-sm shadow-glow-red transition-all"
           >
             <Play className="w-4 h-4 fill-white" />
-            <span>Tonton Sekarang</span>
+            <span>Tonton</span>
           </button>
 
           <button
             onClick={() => onSelectMedia(item)}
-            className="flex items-center gap-2 px-5 py-3 rounded-full bg-dark-card/90 hover:bg-dark-hover border border-dark-border text-white font-bold text-xs sm:text-sm hover:border-gray-400 transition-all"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-full bg-dark-card/90 hover:bg-dark-hover active:scale-95 border border-dark-border text-white font-bold text-xs sm:text-sm hover:border-gray-400 transition-all"
           >
             <Info className="w-4 h-4" />
-            <span>Detail Info</span>
+            <span>Detail</span>
           </button>
 
           <button
             onClick={() => toggleWatchlist(item)}
-            className={`p-3 rounded-full border transition-all ${
+            className={`p-3 rounded-full border transition-all active:scale-95 ${
               isBookmarked 
                 ? 'bg-brand-500/20 text-brand-500 border-brand-500 shadow-glow-red' 
                 : 'bg-dark-card/90 text-gray-300 border-dark-border hover:text-white hover:border-gray-400'
@@ -114,21 +148,36 @@ export default function HeroBanner({ items = [], onSelectMedia, onPlayStream }) 
         </div>
       </div>
 
-      {/* Slide Navigation Arrows */}
+      {/* Slide Navigation Arrows & Dots Indicator for Mobile */}
       {items.length > 1 && (
-        <div className="absolute bottom-6 right-6 z-20 flex items-center gap-2">
+        <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-20 flex items-center gap-2">
+          {/* Mobile Dots */}
+          <div className="flex sm:hidden items-center gap-1.5 mr-2">
+            {items.map((_, idx) => (
+              <span
+                key={idx}
+                onClick={() => setCurrentIndex(idx)}
+                className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                  currentIndex === idx ? 'w-5 bg-brand-500' : 'w-1.5 bg-gray-500/50'
+                }`}
+              />
+            ))}
+          </div>
+
           <button
             onClick={prevSlide}
-            className="p-2.5 rounded-full bg-dark-card/80 border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all"
+            className="p-2 sm:p-2.5 rounded-full bg-dark-card/80 border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all active:scale-95"
+            aria-label="Slide sebelumnya"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <div className="text-xs font-semibold text-gray-400 px-1">
+          <div className="text-xs font-semibold text-gray-400 px-1 hidden sm:block">
             {currentIndex + 1} / {items.length}
           </div>
           <button
             onClick={nextSlide}
-            className="p-2.5 rounded-full bg-dark-card/80 border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all"
+            className="p-2 sm:p-2.5 rounded-full bg-dark-card/80 border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all active:scale-95"
+            aria-label="Slide berikutnya"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

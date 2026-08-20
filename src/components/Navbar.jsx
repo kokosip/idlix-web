@@ -7,7 +7,6 @@ import {
   Search, 
   SlidersHorizontal, 
   Server, 
-  Menu, 
   X, 
   Star,
   Play,
@@ -28,7 +27,8 @@ export default function Navbar({
   const [results, setResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobileSearchExpanded, setIsMobileSearchExpanded] = useState(false);
+
   const searchRef = useRef(null);
   const { watchlist } = useWatchlist();
 
@@ -79,24 +79,24 @@ export default function Navbar({
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-dark-border/50 transition-all duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-4">
+        <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
           
           {/* Brand Logo */}
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-8 shrink-0">
             <button 
               onClick={() => setActiveTab('home')} 
               className="flex items-center gap-2 group text-left focus:outline-none"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-700 via-brand-500 to-rose-400 p-0.5 shadow-glow-red group-hover:scale-105 transition-transform">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-brand-700 via-brand-500 to-rose-400 p-0.5 shadow-glow-red group-hover:scale-105 transition-transform">
                 <div className="w-full h-full bg-dark-base rounded-[10px] flex items-center justify-center">
-                  <span className="text-xl font-black text-brand-500 tracking-tighter">ID</span>
+                  <span className="text-lg sm:text-xl font-black text-brand-500 tracking-tighter">ID</span>
                 </div>
               </div>
               <div className="flex flex-col">
-                <span className="text-xl font-black tracking-wider text-white flex items-center gap-1">
-                  IDLIX <span className="text-brand-500 text-xs px-1.5 py-0.5 rounded bg-brand-500/10 border border-brand-500/30">v3</span>
+                <span className="text-lg sm:text-xl font-black tracking-wider text-white flex items-center gap-1">
+                  IDLIX <span className="text-brand-500 text-[10px] sm:text-xs px-1.5 py-0.5 rounded bg-brand-500/10 border border-brand-500/30">v3</span>
                 </span>
-                <span className="text-[10px] text-gray-400 font-medium -mt-1 tracking-widest uppercase">Stream Hub</span>
+                <span className="text-[9px] sm:text-[10px] text-gray-400 font-medium -mt-1 tracking-widest uppercase hidden sm:block">Stream Hub</span>
               </div>
             </button>
 
@@ -129,38 +129,38 @@ export default function Navbar({
           </div>
 
           {/* Right Actions: Search, Filter, Server Status */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-1 justify-end">
             
-            {/* Search Input Container */}
-            <div className="relative" ref={searchRef}>
+            {/* Search Input Container (Responsive & Touch Friendly) */}
+            <div className="relative flex-1 sm:flex-none max-w-[200px] sm:max-w-xs md:max-w-sm" ref={searchRef}>
               <div className="relative flex items-center">
                 <input
                   type="text"
-                  placeholder="Cari film, tv series..."
+                  placeholder="Cari film, series..."
                   value={query}
                   onChange={(e) => {
                     setQuery(e.target.value);
                     setShowSearchDropdown(true);
                   }}
                   onFocus={() => setShowSearchDropdown(true)}
-                  className="w-44 sm:w-64 md:w-72 bg-dark-card/90 border border-dark-border text-xs sm:text-sm text-white rounded-full py-2 pl-9 pr-8 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all placeholder:text-gray-500"
+                  className="w-full bg-dark-card/90 border border-dark-border text-xs sm:text-sm text-white rounded-full py-1.5 sm:py-2 pl-8 sm:pl-9 pr-7 sm:pr-8 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all placeholder:text-gray-500"
                 />
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 pointer-events-none" />
+                <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 absolute left-2.5 sm:left-3 pointer-events-none" />
                 {isSearching ? (
-                  <Loader2 className="w-4 h-4 text-brand-500 animate-spin absolute right-3" />
+                  <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-500 animate-spin absolute right-2.5 sm:right-3" />
                 ) : query && (
                   <button 
                     onClick={() => setQuery('')}
-                    className="absolute right-3 text-gray-400 hover:text-white"
+                    className="absolute right-2.5 sm:right-3 text-gray-400 hover:text-white p-0.5"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </button>
                 )}
               </div>
 
               {/* Search Dropdown Preview */}
               {showSearchDropdown && query.trim() !== '' && (
-                <div className="absolute right-0 mt-2 w-72 sm:w-96 glass-panel rounded-2xl shadow-2xl border border-dark-border overflow-hidden z-50 animate-fade-in max-h-[80vh] overflow-y-auto">
+                <div className="fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-auto mt-1 sm:mt-2 sm:w-96 glass-panel rounded-2xl shadow-2xl border border-dark-border overflow-hidden z-50 animate-fade-in max-h-[75vh] overflow-y-auto">
                   <div className="p-3 border-b border-dark-border/60 flex items-center justify-between text-xs text-gray-400">
                     <span>Hasil Pencarian: "{query}"</span>
                     <span>{results.length} ditemukan</span>
@@ -173,7 +173,7 @@ export default function Navbar({
                     </div>
                   ) : results.length > 0 ? (
                     <div className="divide-y divide-dark-border/40">
-                      {results.slice(0, 7).map((item) => (
+                      {results.slice(0, 8).map((item) => (
                         <button
                           key={item.slug}
                           onClick={() => {
@@ -181,7 +181,7 @@ export default function Navbar({
                             setShowSearchDropdown(false);
                             setQuery('');
                           }}
-                          className="w-full p-2.5 flex items-center gap-3 hover:bg-dark-hover/80 text-left transition-colors group"
+                          className="w-full p-2.5 flex items-center gap-3 hover:bg-dark-hover/80 text-left transition-colors group active:bg-dark-hover"
                         >
                           <img
                             src={item.poster}
@@ -222,7 +222,7 @@ export default function Navbar({
             {/* Category / Filter Drawer Button */}
             <button
               onClick={onOpenFilter}
-              className="p-2 rounded-full bg-dark-card/80 border border-dark-border text-gray-300 hover:text-white hover:border-brand-500/50 hover:bg-dark-hover transition-all"
+              className="p-2 rounded-full bg-dark-card/80 border border-dark-border text-gray-300 hover:text-white hover:border-brand-500/50 hover:bg-dark-hover transition-all shrink-0 active:scale-95"
               title="Filter Kategori"
             >
               <SlidersHorizontal className="w-4 h-4" />
@@ -231,7 +231,7 @@ export default function Navbar({
             {/* API Status Badge & Config Modal Launcher */}
             <button
               onClick={onOpenApiConfig}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-all shrink-0 active:scale-95 ${
                 apiOnline 
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
                   : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20'
@@ -243,53 +243,9 @@ export default function Navbar({
               <span className={`w-2 h-2 rounded-full ${apiOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
             </button>
 
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-gray-300 hover:text-white focus:outline-none"
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-
           </div>
         </div>
       </div>
-
-      {/* Mobile Drawer Menu */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-dark-border bg-dark-base/95 p-4 animate-fade-in">
-          <div className="flex flex-col gap-2">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium ${
-                    isActive 
-                      ? 'bg-brand-500 text-white font-bold' 
-                      : 'text-gray-300 hover:bg-dark-hover'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-5 h-5" />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge > 0 && (
-                    <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-white text-brand-500">
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </header>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Loader2, AlertCircle, RefreshCw, Film, Tv, ExternalLink, Copy, Check, MonitorPlay, Layers, Maximize2, Minimize2, ArrowLeft } from 'lucide-react';
+import { X, Loader2, AlertCircle, RefreshCw, Film, Tv, ExternalLink, Copy, Check, MonitorPlay, Layers, Maximize2, Minimize2, ArrowLeft, RotateCcw, RotateCw } from 'lucide-react';
 import Hls from 'hls.js';
 import { getMovieStream, getEpisodeStream, normalizeMediaItem, getApiBaseUrl } from '../services/api';
 
@@ -24,10 +24,24 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const seasonNum = episodeInfo?.season || 1;
   const episodeNum = episodeInfo?.episode || 1;
 
-  // Disable background page scrolling while video player modal is open
+  const handleSeek = (seconds) => {
+    const video = videoRef.current;
+    if (video) {
+      video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
+      resetControlsTimeout();
+    }
+  };
+
+  // Disable background page scrolling while video player modal is open & auto-fullscreen on mobile
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
+    // Auto-enable full screen mode on mobile screens
+    if (window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024)) {
+      setIsBrowserFullscreen(true);
+    }
+
     return () => {
       document.body.style.overflow = originalOverflow;
     };
@@ -440,8 +454,8 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               onClick={() => setIsBrowserFullscreen(!isBrowserFullscreen)}
               className={
                 isBrowserFullscreen
-                  ? 'p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all'
-                  : 'p-2 rounded-lg bg-dark-surface border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all'
+                  ? 'hidden md:inline-flex p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all'
+                  : 'hidden md:inline-flex p-2 rounded-lg bg-dark-surface border border-dark-border text-gray-300 hover:text-white hover:border-brand-500 transition-all'
               }
               title={isBrowserFullscreen ? 'Keluar Fullscreen (Esc)' : 'Fullscreen Browser Netflix Style'}
             >
@@ -541,6 +555,26 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               >
                 Browser anda tidak mendukung HTML5 video tag.
               </video>
+
+              {/* Quick Seek Buttons Overlay */}
+              <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-20">
+                <button
+                  onClick={() => handleSeek(-10)}
+                  className="pointer-events-auto p-2.5 sm:p-3 rounded-full bg-black/60 text-white hover:bg-black/80 active:scale-95 border border-white/10 backdrop-blur-md transition-all shadow-lg flex items-center gap-1 text-xs font-bold"
+                  title="Mundur 10 Detik"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>-10s</span>
+                </button>
+                <button
+                  onClick={() => handleSeek(10)}
+                  className="pointer-events-auto p-2.5 sm:p-3 rounded-full bg-black/60 text-white hover:bg-black/80 active:scale-95 border border-white/10 backdrop-blur-md transition-all shadow-lg flex items-center gap-1 text-xs font-bold"
+                  title="Maju 10 Detik"
+                >
+                  <span>+10s</span>
+                  <RotateCw className="w-4 h-4" />
+                </button>
+              </div>
 
               {/* High-visibility Netflix-style Subtitle Overlay */}
               {activeCue && !isEmbedIframe && (

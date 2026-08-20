@@ -125,21 +125,27 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
   const seasonsList = getSeasonNumbers(displayData);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-10 overflow-y-auto bg-black/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-4xl glass-panel rounded-3xl overflow-hidden shadow-2xl border border-dark-border max-h-[90vh] flex flex-col my-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 md:p-10 overflow-y-auto bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-4xl glass-panel rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl border border-dark-border max-h-[92vh] sm:max-h-[90vh] flex flex-col my-0 sm:my-auto">
         
+        {/* Mobile Bottom Sheet Handle Indicator */}
+        <div className="sm:hidden w-full pt-2 pb-1 bg-dark-surface/90 flex justify-center border-b border-white/5">
+          <div className="w-12 h-1.5 rounded-full bg-gray-600/60" />
+        </div>
+
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-30 p-2.5 rounded-full bg-black/60 text-gray-300 hover:text-white hover:bg-black/90 transition-all backdrop-blur-md"
+          className="absolute top-4 right-4 z-30 p-2.5 rounded-full bg-black/60 text-gray-300 hover:text-white hover:bg-black/90 transition-all backdrop-blur-md active:scale-95"
+          aria-label="Tutup modal"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="overflow-y-auto hide-scrollbar flex-1">
+        <div className="overflow-y-auto hide-scrollbar flex-1 pb-20 sm:pb-0">
           
           {/* Backdrop Header */}
-          <div className="relative h-64 sm:h-80 w-full bg-dark-surface">
+          <div className="relative h-48 sm:h-80 w-full bg-dark-surface">
             <img
               src={displayData.backdrop || displayData.poster}
               alt={displayData.title}
@@ -152,7 +158,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
             <div className="absolute inset-0 bg-gradient-to-r from-dark-surface via-transparent to-transparent" />
             
             {/* Title overlay on banner */}
-            <div className="absolute bottom-4 left-6 right-6 flex items-end justify-between z-10">
+            <div className="absolute bottom-3 left-4 right-4 sm:bottom-4 sm:left-6 sm:right-6 flex items-end justify-between z-10">
               <div className="flex items-center gap-4">
                 <img
                   src={displayData.poster}
@@ -168,7 +174,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                       {displayData.type}
                     </span>
                   </div>
-                  <h2 className="text-xl sm:text-3xl font-black text-white tracking-tight">
+                  <h2 className="text-lg sm:text-3xl font-black text-white tracking-tight leading-tight">
                     {displayData.title}
                   </h2>
                 </div>
@@ -177,11 +183,11 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
           </div>
 
           {/* Main Body */}
-          <div className="p-6 sm:p-8 space-y-6">
+          <div className="p-4 sm:p-8 space-y-5 sm:space-y-6">
             
             {/* Meta Row & Action Buttons */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-dark-border/60 pb-6">
-              <div className="flex items-center gap-4 text-xs sm:text-sm text-gray-300 flex-wrap">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-dark-border/60 pb-5">
+              <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm text-gray-300 flex-wrap">
                 <div className="flex items-center gap-1 text-amber-400 font-bold bg-amber-400/10 px-2.5 py-1 rounded-lg border border-amber-400/20">
                   <Star className="w-4 h-4 fill-amber-400" />
                   <span>{displayData.rating}</span>
@@ -202,7 +208,8 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                 )}
               </div>
 
-              <div className="flex items-center gap-3 w-full sm:w-auto">
+              {/* Desktop / Inline Action Buttons */}
+              <div className="hidden sm:flex items-center gap-3 w-full sm:w-auto">
                 <button
                   onClick={() => {
                     onPlayStream(displayData, displayData.type === 'series' ? { season: selectedSeason, episode: 1 } : null);
@@ -373,6 +380,31 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
           </div>
 
         </div>
+
+        {/* Sticky Mobile Floating Action Bar */}
+        <div className="sm:hidden p-3 bg-dark-base/95 backdrop-blur-xl border-t border-dark-border/80 z-40 flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => {
+              onPlayStream(displayData, displayData.type === 'series' ? { season: selectedSeason, episode: 1 } : null);
+            }}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-brand-500 hover:bg-brand-600 text-white font-extrabold text-xs shadow-glow-red active:scale-95 transition-all"
+          >
+            <Play className="w-4 h-4 fill-white" />
+            <span>{displayData.type === 'series' ? 'Putar Ep. 1' : 'Tonton Film'}</span>
+          </button>
+          <button
+            onClick={() => toggleWatchlist(displayData)}
+            className={`p-3 rounded-full border transition-all active:scale-95 ${
+              isBookmarked 
+                ? 'bg-brand-500/20 text-brand-500 border-brand-500' 
+                : 'bg-dark-card text-gray-300 border-dark-border hover:text-white'
+            }`}
+            title={isBookmarked ? 'Disimpan di Watchlist' : 'Tambah ke Watchlist'}
+          >
+            {isBookmarked ? <Check className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+          </button>
+        </div>
+
       </div>
     </div>
   );
