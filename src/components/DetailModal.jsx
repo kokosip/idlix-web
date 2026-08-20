@@ -25,6 +25,15 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
   const [isLoadingSeason, setIsLoadingSeason] = useState(false);
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
 
+  // Disable background page scrolling while detail modal is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   useEffect(() => {
     if (!media) return;
 

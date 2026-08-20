@@ -24,6 +24,15 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const seasonNum = episodeInfo?.season || 1;
   const episodeNum = episodeInfo?.episode || 1;
 
+  // Disable background page scrolling while video player modal is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   const resetControlsTimeout = () => {
     setControlsVisible(true);
     if (controlsTimeoutRef.current) {
@@ -34,15 +43,39 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     }, 3500);
   };
 
-  // Handle ESC key to exit browser fullscreen mode
+  // Keyboard Shortcuts (Space for Play/Pause toggle, Esc for exiting fullscreen)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isBrowserFullscreen) {
+      // Ignore keyboard shortcuts when typing inside form elements
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') {
+        return;
+      }
+
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Remove focus from focused button so Space never triggers button clicks
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+          document.activeElement.blur();
+        }
+
+        const video = videoRef.current;
+        if (video) {
+          if (video.paused) {
+            video.play().catch((err) => console.warn('[VideoPlayer] Play error:', err));
+          } else {
+            video.pause();
+          }
+        }
+      } else if (e.key === 'Escape' && isBrowserFullscreen) {
         setIsBrowserFullscreen(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isBrowserFullscreen]);
 
   // Manage control visibility timer when in browser fullscreen mode
