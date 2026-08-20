@@ -130,12 +130,52 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const isEmbedIframe = playerMode === 'iframe' ? true : playerMode === 'hls' ? false : detectedIsIframe;
   const subtitlesList = payload?.subtitles || payload?.vtt_tracks || payload?.tracks || payload?.captions || [];
 
-  // Subtitle Blob Loader to bypass CORS restrictions and normalize VTT format
+  // Subtitle Blob Loader & VTT Cue Parser
   const [subBlobUrl, setSubBlobUrl] = useState('');
+  const [vttCues, setVttCues] = useState([]);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  const parseVttCues = (vttText) => {
+    if (!vttText) return [];
+    const lines = vttText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const cues = [];
+    let currentCue = null;
+
+    const timeToSec = (tStr) => {
+      if (!tStr) return 0;
+      const parts = tStr.trim().split(':');
+      if (parts.length === 3) {
+        return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2].replace(',', '.'));
+      } else if (parts.length === 2) {
+        return parseFloat(parts[0]) * 60 + parseFloat(parts[1].replace(',', '.'));
+      }
+      return 0;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.includes('-->')) {
+        const [startStr, endStr] = line.split('-->');
+        currentCue = {
+          start: timeToSec(startStr),
+          end: timeToSec(endStr),
+          text: '',
+        };
+      } else if (currentCue && line !== '' && !line.startsWith('WEBVTT') && !/^\d+$/.test(line)) {
+        currentCue.text = currentCue.text ? `${currentCue.text}\n${line}` : line;
+      } else if (line === '' && currentCue) {
+        if (currentCue.text) cues.push(currentCue);
+        currentCue = null;
+      }
+    }
+    if (currentCue && currentCue.text) cues.push(currentCue);
+    return cues;
+  };
 
   useEffect(() => {
     if (!selectedSub) {
       setSubBlobUrl('');
+      setVttCues([]);
       return;
     }
 
@@ -151,6 +191,12 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         const response = await fetch(fullUrl);
         if (response.ok) {
           let text = await response.text();
+          // Parse cues for high-visibility overlay rendering
+          const parsed = parseVttCues(text);
+          if (isMounted) {
+            setVttCues(parsed);
+          }
+
           // Ensure WEBVTT header & convert SRT timestamp comma to dot if needed
           if (!text.trim().startsWith('WEBVTT')) {
             text = 'WEBVTT\n\n' + text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
@@ -181,30 +227,8 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     };
   }, [selectedSub]);
 
-  // Programmatic text track mode activation to ensure subtitles display
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const enableSubtitles = () => {
-      if (video.textTracks && video.textTracks.length > 0) {
-        for (let i = 0; i < video.textTracks.length; i++) {
-          video.textTracks[i].mode = 'showing';
-        }
-      }
-    };
-
-    video.addEventListener('canplay', enableSubtitles);
-    video.addEventListener('loadedmetadata', enableSubtitles);
-    
-    const timer = setTimeout(enableSubtitles, 400);
-
-    return () => {
-      video.removeEventListener('canplay', enableSubtitles);
-      video.removeEventListener('loadedmetadata', enableSubtitles);
-      clearTimeout(timer);
-    };
-  }, [subBlobUrl, streamUrl]);
+  // Active VTT cue matching for overlay
+  const activeCue = vttCues.find((c) => currentTime >= c.start && currentTime <= c.end);
 
   // HLS.js initialization for .m3u8 streams
   useEffect(() => {
@@ -470,28 +494,30 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             />
           ) : (
             /* HTML5 / HLS.js Video Player (100% Shared Single Instance) */
-            <video
-              ref={videoRef}
-              controls
-              autoPlay
-              controlsList="nodownload"
-              playsInline
-              crossOrigin="anonymous"
-              referrerPolicy="no-referrer"
-              className="w-full h-full object-contain"
-            >
-              {subBlobUrl && (
-                <track
-                  key={subBlobUrl}
-                  kind="subtitles"
-                  src={subBlobUrl}
-                  srcLang="id"
-                  label="Indonesian"
-                  default
-                />
+            <>
+              <video
+                ref={videoRef}
+                controls
+                autoPlay
+                controlsList="nodownload"
+                playsInline
+                crossOrigin="anonymous"
+                referrerPolicy="no-referrer"
+                onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
+                className="w-full h-full object-contain"
+              >
+                Browser anda tidak mendukung HTML5 video tag.
+              </video>
+
+              {/* High-visibility Netflix-style Subtitle Overlay */}
+              {activeCue && !isEmbedIframe && (
+                <div className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 max-w-3xl px-4 py-1.5 rounded-lg bg-black/85 border border-white/10 text-white text-sm sm:text-base md:text-lg font-extrabold text-center drop-shadow-xl z-20 pointer-events-none transition-all">
+                  {activeCue.text.split('\n').map((line, idx) => (
+                    <div key={idx}>{line}</div>
+                  ))}
+                </div>
               )}
-              Browser anda tidak mendukung HTML5 video tag.
-            </video>
+            </>
           )}
         </div>
 
