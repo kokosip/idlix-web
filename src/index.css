@@ -23,6 +23,13 @@
     background-color: #090a0f;
     color: #e2e8f0;
   }
+
+  /* Disable native HTML5 video subtitle cue background */
+  video::cue {
+    background: transparent !important;
+    color: transparent !important;
+    opacity: 0 !important;
+  }
 }
 
 @layer utilities {

@@ -642,11 +642,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </button>
               </div>
 
-              {/* Single High-visibility Subtitle Overlay (Anchored INSIDE 16:9 Video Box) */}
+              {/* Clean Transparent Subtitle Overlay (No Black Background, Normal Weight Text) */}
               {activeCue && !isEmbedIframe && (
-                <div className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 max-w-[90%] sm:max-w-2xl px-3 py-1.5 rounded-lg bg-black/90 border border-white/10 text-white text-xs sm:text-sm md:text-base font-extrabold text-center drop-shadow-2xl z-20 pointer-events-none transition-all">
+                <div className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-2xl px-2 py-1 text-white text-sm sm:text-base md:text-lg font-normal text-center z-20 pointer-events-none transition-all [text-shadow:_0_2px_6px_rgba(0,0,0,0.95),_0_0_3px_rgba(0,0,0,0.9)]">
                   {activeCue.text.split('\n').map((line, idx) => (
-                    <div key={idx}>{line}</div>
+                    <div key={idx} className="leading-snug">{line}</div>
                   ))}
                 </div>
               )}
