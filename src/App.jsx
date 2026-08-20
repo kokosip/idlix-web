@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from './components/Navbar';
 import HomeView from './views/HomeView';
 import MoviesView from './views/MoviesView';
@@ -15,7 +15,6 @@ import MobileBottomNav from './components/MobileBottomNav';
 
 import { WatchlistProvider } from './context/WatchlistContext';
 import { checkApiStatus } from './services/api';
-import { Film, Server, Heart } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
@@ -32,6 +31,25 @@ export default function App() {
   // API Health state
   const [apiOnline, setApiOnline] = useState(true);
 
+  // State ref for popstate handler without stale closure
+  const stateRef = useRef({
+    playingMedia,
+    selectedMedia,
+    isFilterOpen,
+    isApiConfigOpen,
+    activeTab,
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      playingMedia,
+      selectedMedia,
+      isFilterOpen,
+      isApiConfigOpen,
+      activeTab,
+    };
+  }, [playingMedia, selectedMedia, isFilterOpen, isApiConfigOpen, activeTab]);
+
   useEffect(() => {
     const verifyApi = async () => {
       const res = await checkApiStatus();
@@ -40,14 +58,115 @@ export default function App() {
     verifyApi();
   }, []);
 
+  // Intercept Android Back Button / Browser Back Button (popstate)
+  useEffect(() => {
+    const handlePopState = () => {
+      const { playingMedia, selectedMedia, isFilterOpen, isApiConfigOpen, activeTab } = stateRef.current;
+
+      // 1. Close Video Player if open
+      if (playingMedia) {
+        setPlayingMedia(null);
+        setPlayingEpisodeInfo(null);
+        return;
+      }
+
+      // 2. Close Detail Modal if open
+      if (selectedMedia) {
+        setSelectedMedia(null);
+        return;
+      }
+
+      // 3. Close Filter Drawer if open
+      if (isFilterOpen) {
+        setIsFilterOpen(false);
+        return;
+      }
+
+      // 4. Close API Config Modal if open
+      if (isApiConfigOpen) {
+        setIsApiConfigOpen(false);
+        return;
+      }
+
+      // 5. If on non-home tab, go back to home tab
+      if (activeTab !== 'home') {
+        setActiveTab('home');
+        setSelectedCategory(null);
+        return;
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Setters with History pushState
+  const handleTabChange = (tab) => {
+    if (tab !== activeTab) {
+      if (tab !== 'home') {
+        window.history.pushState({ type: 'tab', tab }, '');
+      }
+      setActiveTab(tab);
+      setSelectedCategory(null);
+    }
+  };
+
   const handleSelectCategory = (catData) => {
+    window.history.pushState({ type: 'category' }, '');
     setSelectedCategory(catData);
     setActiveTab('category');
   };
 
+  const handleOpenDetailMedia = (media) => {
+    if (media) {
+      window.history.pushState({ modal: 'detail' }, '');
+    }
+    setSelectedMedia(media);
+  };
+
+  const handleCloseDetailMedia = () => {
+    setSelectedMedia(null);
+    if (window.history.state?.modal === 'detail') {
+      window.history.back();
+    }
+  };
+
   const handlePlayStream = (media, episodeInfo = null) => {
+    window.history.pushState({ modal: 'videoPlayer' }, '');
     setPlayingMedia(media);
     setPlayingEpisodeInfo(episodeInfo);
+  };
+
+  const handleCloseVideoPlayer = () => {
+    setPlayingMedia(null);
+    setPlayingEpisodeInfo(null);
+    if (window.history.state?.modal === 'videoPlayer') {
+      window.history.back();
+    }
+  };
+
+  const handleOpenFilter = () => {
+    window.history.pushState({ modal: 'filter' }, '');
+    setIsFilterOpen(true);
+  };
+
+  const handleCloseFilter = () => {
+    setIsFilterOpen(false);
+    if (window.history.state?.modal === 'filter') {
+      window.history.back();
+    }
+  };
+
+  const handleOpenApiConfig = () => {
+    window.history.pushState({ modal: 'apiConfig' }, '');
+    setIsApiConfigOpen(true);
+  };
+
+  const handleCloseApiConfig = () => {
+    setIsApiConfigOpen(false);
+    if (window.history.state?.modal === 'apiConfig') {
+      window.history.back();
+    }
   };
 
   return (
@@ -57,13 +176,10 @@ export default function App() {
         {/* Navigation Bar */}
         <Navbar
           activeTab={activeTab}
-          setActiveTab={(tab) => {
-            setActiveTab(tab);
-            setSelectedCategory(null);
-          }}
-          onSelectMedia={(media) => setSelectedMedia(media)}
-          onOpenApiConfig={() => setIsApiConfigOpen(true)}
-          onOpenFilter={() => setIsFilterOpen(true)}
+          setActiveTab={handleTabChange}
+          onSelectMedia={handleOpenDetailMedia}
+          onOpenApiConfig={handleOpenApiConfig}
+          onOpenFilter={handleOpenFilter}
           apiOnline={apiOnline}
         />
 
@@ -71,40 +187,40 @@ export default function App() {
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 md:pb-6">
           {activeTab === 'home' && (
             <HomeView 
-              onSelectMedia={(media) => setSelectedMedia(media)}
+              onSelectMedia={handleOpenDetailMedia}
               onPlayStream={handlePlayStream}
             />
           )}
 
           {activeTab === 'movies' && (
             <MoviesView 
-              onSelectMedia={(media) => setSelectedMedia(media)}
+              onSelectMedia={handleOpenDetailMedia}
             />
           )}
 
           {activeTab === 'series' && (
             <SeriesView 
-              onSelectMedia={(media) => setSelectedMedia(media)}
+              onSelectMedia={handleOpenDetailMedia}
             />
           )}
 
           {activeTab === 'leaderboard' && (
             <LeaderboardView 
-              onSelectMedia={(media) => setSelectedMedia(media)}
+              onSelectMedia={handleOpenDetailMedia}
             />
           )}
 
           {activeTab === 'category' && (
             <CategoryView 
               selectedCategory={selectedCategory}
-              onBack={() => setActiveTab('home')}
-              onSelectMedia={(media) => setSelectedMedia(media)}
+              onBack={() => handleTabChange('home')}
+              onSelectMedia={handleOpenDetailMedia}
             />
           )}
 
           {activeTab === 'watchlist' && (
             <WatchlistView 
-              onSelectMedia={(media) => setSelectedMedia(media)}
+              onSelectMedia={handleOpenDetailMedia}
             />
           )}
         </main>
@@ -126,17 +242,14 @@ export default function App() {
         {/* Mobile Bottom Navigation */}
         <MobileBottomNav
           activeTab={activeTab}
-          setActiveTab={(tab) => {
-            setActiveTab(tab);
-            setSelectedCategory(null);
-          }}
+          setActiveTab={handleTabChange}
         />
 
         {/* Modals & Drawers */}
         {selectedMedia && (
           <DetailModal
             media={selectedMedia}
-            onClose={() => setSelectedMedia(null)}
+            onClose={handleCloseDetailMedia}
             onPlayStream={handlePlayStream}
           />
         )}
@@ -145,22 +258,19 @@ export default function App() {
           <VideoPlayerModal
             media={playingMedia}
             episodeInfo={playingEpisodeInfo}
-            onClose={() => {
-              setPlayingMedia(null);
-              setPlayingEpisodeInfo(null);
-            }}
+            onClose={handleCloseVideoPlayer}
           />
         )}
 
         <ApiConfigModal
           isOpen={isApiConfigOpen}
-          onClose={() => setIsApiConfigOpen(false)}
+          onClose={handleCloseApiConfig}
           onStatusUpdated={(status) => setApiOnline(status)}
         />
 
         <FilterDrawer
           isOpen={isFilterOpen}
-          onClose={() => setIsFilterOpen(false)}
+          onClose={handleCloseFilter}
           onSelectCategory={handleSelectCategory}
         />
 

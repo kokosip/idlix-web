@@ -32,10 +32,24 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     }
   };
 
-  // Disable background page scrolling while video player modal is open & auto-fullscreen on mobile
+  // Disable background page scrolling & touch dragging while video player modal is open & auto-fullscreen on mobile
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
+    const originalTouchAction = document.body.style.touchAction;
+    const originalOverscroll = document.body.style.overscrollBehavior;
+
     document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    document.body.style.overscrollBehavior = 'none';
+
+    const preventTouchScroll = (e) => {
+      // Prevent dragging page around on mobile touch devices when video modal is open
+      if (e.target.tagName !== 'SELECT' && e.target.tagName !== 'OPTION') {
+        if (e.cancelable) e.preventDefault();
+      }
+    };
+
+    document.addEventListener('touchmove', preventTouchScroll, { passive: false });
 
     // Auto-enable full screen mode on mobile screens
     if (window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024)) {
@@ -44,6 +58,9 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
     return () => {
       document.body.style.overflow = originalOverflow;
+      document.body.style.touchAction = originalTouchAction;
+      document.body.style.overscrollBehavior = originalOverscroll;
+      document.removeEventListener('touchmove', preventTouchScroll);
     };
   }, []);
 
@@ -553,6 +570,16 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
                 className="w-full h-full object-contain"
               >
+                {subBlobUrl && (
+                  <track
+                    key={subBlobUrl}
+                    kind="subtitles"
+                    src={subBlobUrl}
+                    srcLang="id"
+                    label="Indonesian"
+                    default
+                  />
+                )}
                 Browser anda tidak mendukung HTML5 video tag.
               </video>
 
@@ -578,7 +605,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
               {/* High-visibility Netflix-style Subtitle Overlay */}
               {activeCue && !isEmbedIframe && (
-                <div className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 max-w-3xl px-4 py-1.5 rounded-lg bg-black/85 border border-white/10 text-white text-sm sm:text-base md:text-lg font-extrabold text-center drop-shadow-xl z-20 pointer-events-none transition-all">
+                <div className="absolute bottom-[22%] sm:bottom-14 landscape:bottom-6 left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-3xl px-3.5 py-1.5 rounded-lg bg-black/90 border border-white/10 text-white text-xs sm:text-base md:text-lg font-extrabold text-center drop-shadow-2xl z-30 pointer-events-none transition-all">
                   {activeCue.text.split('\n').map((line, idx) => (
                     <div key={idx}>{line}</div>
                   ))}
