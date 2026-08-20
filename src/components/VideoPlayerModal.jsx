@@ -43,6 +43,15 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const playerContainerRef = useRef(null);
+  const lastTimeRef = useRef(0);
+
+  const handleTimeUpdate = (e) => {
+    const time = e.target.currentTime;
+    if (Math.abs(time - lastTimeRef.current) >= 0.25) {
+      lastTimeRef.current = time;
+      setCurrentTime(time);
+    }
+  };
 
   const displayData = normalizeMediaItem(media);
   const isSeries = displayData?.type === 'series';
@@ -108,6 +117,53 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       }
     }
     resetControlsTimeout();
+  };
+
+  const handleOpenVLC = () => {
+    if (!streamUrl) return;
+
+    const rawStream = streamUrl;
+    const subUrl = selectedSub
+      ? selectedSub.startsWith('http')
+        ? selectedSub
+        : `${getApiBaseUrl()}${selectedSub.startsWith('/') ? '' : '/'}${selectedSub}`
+      : '';
+
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isAndroid) {
+      let cleanUrl = rawStream.replace(/^https?:\/\//, '');
+      let intentUrl = `intent://${cleanUrl}#Intent;action=android.intent.action.VIEW;type=video/*;package=org.videolan.vlc;`;
+      if (subUrl) {
+        intentUrl += `S.subtitles_location=${subUrl};`;
+        intentUrl += `S.sub=${subUrl};`;
+      }
+      intentUrl += 'end';
+      window.location.href = intentUrl;
+    } else if (isIOS) {
+      window.location.href = `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(rawStream)}${
+        subUrl ? `&sub=${encodeURIComponent(subUrl)}` : ''
+      }`;
+    } else {
+      const fileName = `${displayData.title.replace(/[^a-z0-9]/gi, '_')}.m3u`;
+      let m3uText = `#EXTM3U\n#EXTINF:-1, ${displayData.title}\n`;
+      if (subUrl) {
+        m3uText += `#EXTVLCOPT:sub-file=${subUrl}\n`;
+        m3uText += `#EXTVLCOPT:input-slave=${subUrl}\n`;
+      }
+      m3uText += `${rawStream}\n`;
+
+      const blob = new Blob([m3uText], { type: 'audio/x-mpegurl' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
   };
 
   const formatTime = (secs) => {
@@ -402,8 +458,19 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       const hls = new Hls({
         debug: false,
         enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90,
+        lowLatencyMode: false,
+        backBufferLength: 30,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 60 * 1024 * 1024,
+        maxBufferHole: 0.5,
+        highBufferWatchdogPeriod: 1,
+        nudgeOffset: 0.1,
+        nudgeMaxRetries: 10,
+        maxFragLoadingRetryDelay: 4000,
+        capLevelToPlayerSize: true,
+        progressive: true,
+        startLevel: -1,
       });
 
       hls.loadSource(streamUrl);
@@ -499,6 +566,30 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           </div>
 
           <div className={`flex items-center gap-2 ${isBrowserFullscreen ? 'pointer-events-auto' : ''}`}>
+            {streamUrl && (
+              <>
+                <button
+                  onClick={handleOpenVLC}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold transition-all shadow-md shrink-0"
+                  title="Buka & Putar Stream di Aplikasi VLC Media Player (Bebas Lag + Subtitle Otomatis)"
+                >
+                  <Tv className="w-3.5 h-3.5 text-amber-200" />
+                  <span className="text-[10px] sm:text-[11px]">Buka VLC</span>
+                </button>
+
+                <a
+                  href={streamUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-xs font-bold transition-all shadow-glow-red shrink-0"
+                  title="Buka Stream di Tab Baru (Gunakan Player Bawaan Browser)"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="text-[10px] sm:text-[11px]">Tab Baru</span>
+                </a>
+              </>
+            )}
+
             {/* Subtitle Selector */}
             {subtitlesList.length > 0 && (
               <div className="flex items-center gap-1 bg-black/60 border border-white/10 px-2 py-1 rounded-lg backdrop-blur-md">
@@ -596,7 +687,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 playsInline
                 crossOrigin="anonymous"
                 referrerPolicy="no-referrer"
-                onTimeUpdate={(e) => setCurrentTime(e.target.currentTime)}
+                onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={(e) => setDuration(e.target.duration || 0)}
                 onDurationChange={(e) => setDuration(e.target.duration || 0)}
                 onPlay={() => setIsPlaying(true)}

@@ -24,11 +24,15 @@
     color: #e2e8f0;
   }
 
-  /* Disable native HTML5 video subtitle cue background */
+  /* Native HTML5 video subtitle cue styling (GPU accelerated, no black background) */
   video::cue {
     background: transparent !important;
-    color: transparent !important;
-    opacity: 0 !important;
+    color: #ffffff !important;
+    font-family: inherit !important;
+    font-weight: 500 !important;
+    font-size: 1.15rem !important;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 4px rgba(0, 0, 0, 0.9) !important;
+    line-height: 1.4 !important;
   }
 }
 
