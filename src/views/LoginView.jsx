@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { LogIn, User, Lock, Eye, EyeOff, ShieldAlert, Database, Sparkles, Film, Play, Tv } from 'lucide-react';
+import React, { useState } from 'react';
+import { LogIn, User, Lock, Eye, EyeOff, ShieldAlert, Film, Play, Tv } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getUsers } from '../services/db';
 
 export default function LoginView({ onSuccessLogin }) {
   const { login } = useAuth();
@@ -10,11 +9,6 @@ export default function LoginView({ onSuccessLogin }) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [presetUsers, setPresetUsers] = useState([]);
-
-  useEffect(() => {
-    setPresetUsers(getUsers());
-  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -36,13 +30,6 @@ export default function LoginView({ onSuccessLogin }) {
         setErrorMsg(result.message || 'Login gagal. Periksa username dan password.');
       }
     }, 300);
-  };
-
-  // Preset fill function for convenient test login
-  const handleSelectPreset = (presetUsername, presetPassword) => {
-    setUsername(presetUsername);
-    setPassword(presetPassword);
-    setErrorMsg('');
   };
 
   return (
@@ -69,7 +56,7 @@ export default function LoginView({ onSuccessLogin }) {
           </h1>
           
           <p className="text-xs sm:text-sm text-gray-400 mt-2 max-w-sm mx-auto">
-            Selamat Datang di IDLIX Stream Hub. Silakan masuk dengan akun lokal untuk mengakses menu & katalog streaming.
+            Selamat Datang di IDLIX Stream Hub. Silakan masuk untuk mengakses menu & katalog streaming.
           </p>
 
           <div className="flex items-center justify-center gap-4 mt-3 text-[11px] text-gray-400 font-medium">
@@ -89,9 +76,6 @@ export default function LoginView({ onSuccessLogin }) {
               <LogIn className="w-5 h-5 text-brand-500" />
               <h2 className="text-base font-bold text-white">Masuk Pengguna</h2>
             </div>
-            <span className="text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold">
-              Local DB
-            </span>
           </div>
 
           {/* Error Alert */}
@@ -159,40 +143,11 @@ export default function LoginView({ onSuccessLogin }) {
             </button>
           </form>
 
-          {/* Dynamic Quick Login Presets */}
-          {presetUsers.length > 0 && (
-            <div className="mt-6 pt-5 border-t border-dark-border/60">
-              <div className="flex items-center gap-1.5 mb-2.5 text-xs font-bold text-amber-400 uppercase tracking-wider">
-                <Database className="w-3.5 h-3.5" />
-                <span>Pilih Akun Database Lokal</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
-                {presetUsers.map((u, idx) => (
-                  <button
-                    key={u.id || u.username}
-                    type="button"
-                    onClick={() => handleSelectPreset(u.username, u.password)}
-                    className="p-2.5 rounded-xl bg-dark-card/60 hover:bg-dark-hover border border-dark-border hover:border-brand-500/50 text-left transition-all group"
-                  >
-                    <div className="text-xs font-bold text-white group-hover:text-brand-500 flex items-center justify-between truncate">
-                      <span className="truncate">{u.name || `User ${idx + 1}`}</span>
-                      <Sparkles className="w-3 h-3 text-brand-500 shrink-0" />
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-0.5 truncate">
-                      <code className="text-gray-200">{u.username}</code>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
         </div>
 
         {/* Footer info */}
         <div className="text-center mt-6 text-xs text-gray-500">
-          IDLIX Web Stream • Ditentukan langsung di database local (`src/services/db.js`)
+          IDLIX Web Stream • Personal Streaming Hub
         </div>
 
       </div>
