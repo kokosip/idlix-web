@@ -125,37 +125,59 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const toggleDeviceFullscreen = () => {
     const container = playerContainerRef.current || videoRef.current;
     if (!container) {
-      setIsBrowserFullscreen(!isBrowserFullscreen);
+      const nextFS = !isBrowserFullscreen;
+      setIsBrowserFullscreen(nextFS);
+      if (window.screen && window.screen.orientation) {
+        if (nextFS && window.screen.orientation.lock) {
+          window.screen.orientation.lock('landscape').catch(() => {});
+        } else if (!nextFS && window.screen.orientation.unlock) {
+          try { window.screen.orientation.unlock(); } catch (e) {}
+        }
+      }
       return;
     }
 
     if (document.fullscreenElement || document.webkitFullscreenElement) {
       if (document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
-      } else if (document.webkitExitFullscreen) {
+      } else if (document.webkitFullscreenDocument) {
         document.webkitExitFullscreen();
       }
       setIsBrowserFullscreen(false);
+      if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+        try { window.screen.orientation.unlock(); } catch (e) {}
+      }
     } else {
       if (container.requestFullscreen) {
-        container.requestFullscreen().catch(() => {
-          setIsBrowserFullscreen(!isBrowserFullscreen);
+        container.requestFullscreen().then(() => {
+          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            window.screen.orientation.lock('landscape').catch(() => {});
+          }
+        }).catch(() => {
+          setIsBrowserFullscreen(true);
+          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            window.screen.orientation.lock('landscape').catch(() => {});
+          }
         });
       } else if (container.webkitRequestFullscreen) {
         container.webkitRequestFullscreen();
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+          window.screen.orientation.lock('landscape').catch(() => {});
+        }
       } else if (videoRef.current?.webkitEnterFullscreen) {
         // iOS Safari native video fullscreen
         videoRef.current.webkitEnterFullscreen();
       } else {
-        setIsBrowserFullscreen(!isBrowserFullscreen);
+        setIsBrowserFullscreen(true);
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+          window.screen.orientation.lock('landscape').catch(() => {});
+        }
       }
     }
     resetControlsTimeout();
   };
 
   const handleOpenVLC = () => {
-    if (!streamUrl) return;
-
     const rawStream = streamUrl;
     const subUrl = selectedSub
       ? selectedSub.startsWith('http')
