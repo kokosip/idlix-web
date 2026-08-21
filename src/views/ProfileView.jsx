@@ -15,7 +15,8 @@ import {
   X,
   Sparkles,
   Link as LinkIcon,
-  Check
+  Check,
+  Server
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -66,7 +67,7 @@ const AVATAR_COLLECTION = [
   }
 ];
 
-export default function ProfileView({ onLogoutSuccess }) {
+export default function ProfileView({ onLogoutSuccess, onOpenApiConfig, apiOnline }) {
   const { currentUser, logout, changePassword, editProfile } = useAuth();
 
   // Password change state
@@ -259,10 +260,32 @@ export default function ProfileView({ onLogoutSuccess }) {
               <span className="text-emerald-400 font-medium">Standard Member (Semua User Sama)</span>
             </div>
 
-            <div>
-              <span className="text-gray-400 block text-[11px] uppercase font-semibold tracking-wider">Penyimpanan Database</span>
-              <span className="text-gray-300">Local Database (SQLite / LocalStorage)</span>
-            </div>
+            {/* Host API Server Setting Item */}
+            {onOpenApiConfig && (
+              <div className="pt-2 border-t border-dark-border/60">
+                <span className="text-gray-400 block text-[11px] uppercase font-semibold tracking-wider mb-2">Host API Server</span>
+                <button
+                  type="button"
+                  onClick={onOpenApiConfig}
+                  className="w-full p-3 rounded-xl bg-dark-card/60 hover:bg-dark-hover border border-dark-border flex items-center justify-between transition-all group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-lg ${apiOnline ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                      <Server className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold text-white group-hover:text-brand-500 transition-colors">
+                        Pengaturan Host Server API
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        Status: {apiOnline ? <span className="text-emerald-400 font-semibold">Online</span> : <span className="text-rose-400 font-semibold">Offline</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-xs text-brand-400 font-semibold group-hover:underline">Atur Host &rarr;</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

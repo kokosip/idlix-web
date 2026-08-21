@@ -252,6 +252,8 @@ function AppContent() {
           {activeTab === 'profile' && (
             <ProfileView 
               onLogoutSuccess={() => setActiveTab('home')}
+              onOpenApiConfig={handleOpenApiConfig}
+              apiOnline={apiOnline}
             />
           )}
         </main>
