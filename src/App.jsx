@@ -6,6 +6,8 @@ import SeriesView from './views/SeriesView';
 import LeaderboardView from './views/LeaderboardView';
 import CategoryView from './views/CategoryView';
 import WatchlistView from './views/WatchlistView';
+import LoginView from './views/LoginView';
+import ProfileView from './views/ProfileView';
 
 import DetailModal from './components/DetailModal';
 import VideoPlayerModal from './components/VideoPlayerModal';
@@ -14,9 +16,12 @@ import FilterDrawer from './components/FilterDrawer';
 import MobileBottomNav from './components/MobileBottomNav';
 
 import { WatchlistProvider } from './context/WatchlistContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { checkApiStatus } from './services/api';
+import { Loader2 } from 'lucide-react';
 
-export default function App() {
+function AppContent() {
+  const { isLoggedIn, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('home');
   const [selectedCategory, setSelectedCategory] = useState(null);
 
@@ -169,6 +174,26 @@ export default function App() {
     }
   };
 
+  // 1. Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-dark-base text-white flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+        <span className="text-xs text-gray-400">Memuat Sesi IDLIX...</span>
+      </div>
+    );
+  }
+
+  // 2. Landing Gate: If NOT logged in, show Login Page exclusively
+  if (!isLoggedIn) {
+    return (
+      <LoginView 
+        onSuccessLogin={() => setActiveTab('home')}
+      />
+    );
+  }
+
+  // 3. Authenticated App Experience
   return (
     <WatchlistProvider>
       <div className="min-h-screen flex flex-col bg-dark-base text-gray-100 selection:bg-brand-500 selection:text-white">
@@ -221,6 +246,12 @@ export default function App() {
           {activeTab === 'watchlist' && (
             <WatchlistView 
               onSelectMedia={handleOpenDetailMedia}
+            />
+          )}
+
+          {activeTab === 'profile' && (
+            <ProfileView 
+              onLogoutSuccess={() => setActiveTab('home')}
             />
           )}
         </main>
@@ -276,5 +307,13 @@ export default function App() {
 
       </div>
     </WatchlistProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

@@ -14,6 +14,7 @@ export default function SeriesView({ onSelectMedia }) {
 
     const fetchSeriesData = async () => {
       setIsLoading(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       const res = await getSeries(page);
       if (isMounted) {
         if (res.success && res.data) {

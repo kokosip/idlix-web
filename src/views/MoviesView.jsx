@@ -14,6 +14,7 @@ export default function MoviesView({ onSelectMedia }) {
 
     const fetchMoviesData = async () => {
       setIsLoading(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       const res = await getMovies(page);
       if (isMounted) {
         if (res.success && res.data) {

@@ -1,17 +1,21 @@
 import React from 'react';
-import { Home, Film, Tv, Trophy, Bookmark } from 'lucide-react';
+import { Home, Film, Tv, Trophy, Bookmark, User, LogIn } from 'lucide-react';
 import { useWatchlist } from '../context/WatchlistContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function MobileBottomNav({ activeTab, setActiveTab }) {
   const { watchlist } = useWatchlist();
+  const { isLoggedIn } = useAuth();
   const watchlistCount = watchlist.length;
 
   const navItems = [
     { id: 'home', label: 'Beranda', icon: Home },
     { id: 'movies', label: 'Film', icon: Film },
     { id: 'series', label: 'Series', icon: Tv },
-    { id: 'leaderboard', label: 'Top', icon: Trophy },
     { id: 'watchlist', label: 'Watchlist', icon: Bookmark, badge: watchlistCount },
+    isLoggedIn 
+      ? { id: 'profile', label: 'Profil', icon: User }
+      : { id: 'login', label: 'Masuk', icon: LogIn }
   ];
 
   return (
@@ -58,3 +62,4 @@ export default function MobileBottomNav({ activeTab, setActiveTab }) {
     </nav>
   );
 }
+

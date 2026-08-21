@@ -10,10 +10,13 @@ import {
   X, 
   Star,
   Play,
-  Loader2
+  Loader2,
+  User,
+  LogIn
 } from 'lucide-react';
 import { searchContent, normalizeMediaItem } from '../services/api';
 import { useWatchlist } from '../context/WatchlistContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({ 
   activeTab, 
@@ -31,6 +34,7 @@ export default function Navbar({
 
   const searchRef = useRef(null);
   const { watchlist } = useWatchlist();
+  const { currentUser, isLoggedIn } = useAuth();
 
   // Debounced search effect
   useEffect(() => {
@@ -242,6 +246,38 @@ export default function Navbar({
               <span className="hidden sm:inline">API</span>
               <span className={`w-2 h-2 rounded-full ${apiOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
             </button>
+
+            {/* User Profile / Login Button */}
+            {isLoggedIn ? (
+              <button
+                onClick={() => setActiveTab('profile')}
+                className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full text-xs font-semibold border transition-all shrink-0 active:scale-95 ${
+                  activeTab === 'profile'
+                    ? 'bg-brand-500/20 text-white border-brand-500 shadow-glow-red'
+                    : 'bg-dark-card/90 text-gray-200 border-dark-border hover:border-brand-500/50'
+                }`}
+                title="Profil Saya"
+              >
+                <img
+                  src={currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80'}
+                  alt={currentUser?.name}
+                  className="w-6 h-6 rounded-full object-cover border border-brand-500/40"
+                />
+                <span className="max-w-[80px] sm:max-w-[100px] truncate">{currentUser?.name?.split(' ')[0] || 'Profil'}</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setActiveTab('login')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 active:scale-95 ${
+                  activeTab === 'login'
+                    ? 'bg-brand-600 text-white shadow-glow-red'
+                    : 'bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white shadow-sm'
+                }`}
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Masuk</span>
+              </button>
+            )}
 
           </div>
         </div>
