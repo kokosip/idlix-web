@@ -31,9 +31,8 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [copied, setCopied] = useState(false);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
 
-  // Playback & Seekbar state
+  // Playback & Seekbar state (Isolated to prevent 4x/sec React re-render bottleneck)
   const [duration, setDuration] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
 
   // Auto-hiding controls timer for Netflix/YouTube-style immersive view
@@ -43,34 +42,69 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const playerContainerRef = useRef(null);
-  const lastTimeRef = useRef(0);
-
-  const handleTimeUpdate = (e) => {
-    const time = e.target.currentTime;
-    if (Math.abs(time - lastTimeRef.current) >= 0.25) {
-      lastTimeRef.current = time;
-      setCurrentTime(time);
-    }
-  };
+  const seekbarRef = useRef(null);
+  const timeTextRef = useRef(null);
+  const subtitleRef = useRef(null);
+  const vttCuesRef = useRef([]);
+  const lastCueTextRef = useRef('');
 
   const displayData = normalizeMediaItem(media);
   const isSeries = displayData?.type === 'series';
   const seasonNum = episodeInfo?.season || 1;
   const episodeNum = episodeInfo?.episode || 1;
 
+  const handleTimeUpdate = (e) => {
+    const video = e.target;
+    if (!video) return;
+    const time = video.currentTime;
+    const dur = video.duration || duration || 0;
+
+    // Direct DOM update for seekbar range slider (Zero React re-renders)
+    if (seekbarRef.current && document.activeElement !== seekbarRef.current) {
+      seekbarRef.current.max = dur || 100;
+      seekbarRef.current.value = time;
+    }
+
+    // Direct DOM update for time display text
+    if (timeTextRef.current) {
+      timeTextRef.current.textContent = `${formatTime(time)} / ${formatTime(dur)}`;
+    }
+
+    // Direct DOM update for Subtitles (only triggers text DOM mutation when cue text changes)
+    if (subtitleRef.current && vttCuesRef.current.length > 0) {
+      const activeCue = vttCuesRef.current.find((c) => time >= c.start && time <= c.end);
+      const newText = activeCue ? activeCue.text : '';
+      if (newText !== lastCueTextRef.current) {
+        lastCueTextRef.current = newText;
+        subtitleRef.current.textContent = newText;
+        subtitleRef.current.style.display = newText ? 'block' : 'none';
+      }
+    }
+  };
+
   const handleSeek = (seconds) => {
     const video = videoRef.current;
     if (video) {
-      video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
+      const dur = video.duration || duration || 0;
+      const newTime = Math.max(0, Math.min(dur, video.currentTime + seconds));
+      video.currentTime = newTime;
+      if (seekbarRef.current) seekbarRef.current.value = newTime;
+      if (timeTextRef.current) {
+        timeTextRef.current.textContent = `${formatTime(newTime)} / ${formatTime(dur)}`;
+      }
       resetControlsTimeout();
     }
   };
 
   const handleSeekSliderChange = (e) => {
     const newTime = parseFloat(e.target.value);
-    setCurrentTime(newTime);
-    if (videoRef.current) {
-      videoRef.current.currentTime = newTime;
+    const video = videoRef.current;
+    if (video) {
+      video.currentTime = newTime;
+      const dur = video.duration || duration || 0;
+      if (timeTextRef.current) {
+        timeTextRef.current.textContent = `${formatTime(newTime)} / ${formatTime(dur)}`;
+      }
     }
     resetControlsTimeout();
   };
@@ -440,8 +474,15 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     };
   }, [selectedSub]);
 
-  // Active VTT cue matching for overlay
-  const activeCue = vttCues.find((c) => currentTime >= c.start && currentTime <= c.end);
+  // Keep subtitle cues synced to ref for high-performance direct DOM updates
+  useEffect(() => {
+    vttCuesRef.current = vttCues;
+    if (subtitleRef.current) {
+      subtitleRef.current.textContent = '';
+      subtitleRef.current.style.display = 'none';
+    }
+    lastCueTextRef.current = '';
+  }, [vttCues]);
 
   // HLS.js initialization for .m3u8 streams
   useEffect(() => {
@@ -469,7 +510,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         nudgeMaxRetries: 10,
         maxFragLoadingRetryDelay: 4000,
         capLevelToPlayerSize: true,
-        progressive: true,
+        progressive: false,
         startLevel: -1,
       });
 
@@ -733,13 +774,13 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </button>
               </div>
 
-              {/* Clean Transparent Subtitle Overlay (No Black Background, Normal Weight Text) */}
-              {activeCue && !isEmbedIframe && (
-                <div className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-2xl px-2 py-1 text-white text-sm sm:text-base md:text-lg font-normal text-center z-20 pointer-events-none transition-all [text-shadow:_0_2px_6px_rgba(0,0,0,0.95),_0_0_3px_rgba(0,0,0,0.9)]">
-                  {activeCue.text.split('\n').map((line, idx) => (
-                    <div key={idx} className="leading-snug">{line}</div>
-                  ))}
-                </div>
+              {/* High-Performance Direct Subtitle Overlay */}
+              {!isEmbedIframe && (
+                <div
+                  ref={subtitleRef}
+                  style={{ display: 'none', whitespace: 'pre-line' }}
+                  className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-2xl px-2 py-1 text-white text-sm sm:text-base md:text-lg font-normal text-center z-20 pointer-events-none transition-all [text-shadow:_0_2px_6px_rgba(0,0,0,0.95),_0_0_3px_rgba(0,0,0,0.9)] leading-snug"
+                />
               )}
 
               {/* Bottom Seekbar & Controls Bar (Anchored INSIDE 16:9 Video Box) */}
@@ -751,12 +792,14 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 {/* Seekbar Range Slider */}
                 <div className="flex items-center gap-2 mb-1 px-1">
                   <input
+                    ref={seekbarRef}
                     type="range"
                     min={0}
                     max={duration || 100}
                     step={0.1}
-                    value={currentTime}
+                    defaultValue={0}
                     onChange={handleSeekSliderChange}
+                    onInput={handleSeekSliderChange}
                     className="w-full h-1.5 sm:h-2 bg-gray-700/80 accent-brand-500 rounded-lg cursor-pointer transition-all"
                   />
                 </div>
@@ -771,8 +814,8 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                       {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
                     </button>
 
-                    <span className="text-[11px] text-gray-300 font-mono tracking-tight">
-                      {formatTime(currentTime)} / {formatTime(duration)}
+                    <span ref={timeTextRef} className="text-[11px] text-gray-300 font-mono tracking-tight">
+                      00:00 / {formatTime(duration)}
                     </span>
                   </div>
 
