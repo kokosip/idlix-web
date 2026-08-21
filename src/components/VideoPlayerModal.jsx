@@ -70,13 +70,13 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       timeTextRef.current.textContent = `${formatTime(time)} / ${formatTime(dur)}`;
     }
 
-    // Direct DOM update for Subtitles (only triggers text DOM mutation when cue text changes)
+    // Direct DOM update for Subtitles (only triggers DOM mutation when cue text changes)
     if (subtitleRef.current && vttCuesRef.current.length > 0) {
       const activeCue = vttCuesRef.current.find((c) => time >= c.start && time <= c.end);
       const newText = activeCue ? activeCue.text : '';
       if (newText !== lastCueTextRef.current) {
         lastCueTextRef.current = newText;
-        subtitleRef.current.textContent = newText;
+        subtitleRef.current.innerHTML = newText.replace(/\n/g, '<br>');
         subtitleRef.current.style.display = newText ? 'block' : 'none';
       }
     }
@@ -478,7 +478,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   useEffect(() => {
     vttCuesRef.current = vttCues;
     if (subtitleRef.current) {
-      subtitleRef.current.textContent = '';
+      subtitleRef.current.innerHTML = '';
       subtitleRef.current.style.display = 'none';
     }
     lastCueTextRef.current = '';
@@ -489,9 +489,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     const video = videoRef.current;
     if (!video || !streamUrl || isEmbedIframe) return;
 
-    const isHlsStream = streamUrl.includes('.m3u8') || streamUrl.includes('/hls/') || rawType === 'm3u8' || rawType === 'hls' || Hls.isSupported();
+    // Correctly check if URL is an HLS playlist (.m3u8) vs Direct MP4/Video stream
+    const isHlsUrl = streamUrl.includes('.m3u8') || streamUrl.includes('/hls/') || rawType === 'm3u8' || rawType === 'hls';
+    const isNativeHlsSupported = video.canPlayType('application/vnd.apple.mpegurl');
 
-    if (Hls.isSupported() && isHlsStream) {
+    if (isHlsUrl && !isNativeHlsSupported && Hls.isSupported()) {
       if (hlsRef.current) {
         hlsRef.current.destroy();
       }
@@ -500,17 +502,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         debug: false,
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 30,
+        backBufferLength: 60,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
         maxBufferSize: 60 * 1024 * 1024,
-        maxBufferHole: 0.5,
-        highBufferWatchdogPeriod: 1,
-        nudgeOffset: 0.1,
-        nudgeMaxRetries: 10,
-        maxFragLoadingRetryDelay: 4000,
         capLevelToPlayerSize: true,
-        progressive: false,
         startLevel: -1,
       });
 
@@ -550,11 +546,10 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           hlsRef.current = null;
         }
       };
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = streamUrl;
-      video.play().catch(() => { });
     } else {
+      // Direct MP4 video or Safari Native HLS: Pure 100% GPU hardware decoding without JS overhead
       video.src = streamUrl;
+      video.play().catch(() => {});
     }
   }, [streamUrl, isEmbedIframe, rawType]);
 
