@@ -275,35 +275,38 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     };
   }, []);
 
-  const resetControlsTimeout = () => {
+  const resetControlsTimeout = (delay = 1500) => {
     setControlsVisible(true);
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
     controlsTimeoutRef.current = setTimeout(() => {
       setControlsVisible(false);
-    }, 2500); // Snappy 2.5s auto dismiss
+    }, delay);
   };
 
   const handlePlayerClick = (e) => {
-    // If click is on interactive elements (button, input, select, link, option), reset timer & don't dismiss
+    // If click is on interactive elements (button, input, select, link, option), keep controls visible & reset 1.5s timer
     const isInteractive = e.target.closest('button, input, select, a, option');
     if (isInteractive) {
-      resetControlsTimeout();
+      resetControlsTimeout(1500);
       return;
     }
 
-    // Toggle controls on tap anywhere else
+    // Immediate Netflix-style tap toggle for video navigation
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+
     setControlsVisible((prev) => {
       const nextState = !prev;
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
       if (nextState) {
+        // If turning ON controls, auto dismiss after 1.5s
         controlsTimeoutRef.current = setTimeout(() => {
           setControlsVisible(false);
-        }, 2500);
+        }, 1500);
       }
+      // If turning OFF controls, immediately hides without delay
       return nextState;
     });
   };
@@ -753,16 +756,19 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 className="w-full h-full object-contain cursor-pointer z-0"
               />
 
-              {/* Center Play/Pause & Quick Seek Buttons Overlay */}
+              {/* Center Play/Pause & Quick Seek Buttons Overlay (Clean Netflix Style - No Blur) */}
               <div
                 onClick={handlePlayerClick}
-                className={`absolute inset-0 flex items-center justify-center gap-6 sm:gap-10 bg-black/40 backdrop-blur-[2px] transition-opacity duration-300 z-20 cursor-pointer ${
+                className={`absolute inset-0 flex items-center justify-center gap-6 sm:gap-10 bg-transparent transition-opacity duration-200 z-20 cursor-pointer ${
                   controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
               >
                 <button
-                  onClick={() => handleSeek(-10)}
-                  className="pointer-events-auto p-3 sm:p-4 rounded-full bg-black/70 text-white hover:bg-black/90 active:scale-95 border border-white/10 backdrop-blur-md transition-all shadow-xl flex flex-col items-center gap-0.5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSeek(-10);
+                  }}
+                  className="pointer-events-auto p-3 sm:p-4 rounded-full bg-black/60 text-white hover:bg-black/80 active:scale-95 border border-white/20 transition-all shadow-xl flex flex-col items-center gap-0.5"
                   title="Mundur 10 Detik"
                 >
                   <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -770,8 +776,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </button>
 
                 <button
-                  onClick={togglePlayPause}
-                  className="pointer-events-auto p-4 sm:p-5 rounded-full bg-brand-500/90 text-white hover:bg-brand-600 active:scale-95 shadow-glow-red transition-all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePlayPause();
+                  }}
+                  className="pointer-events-auto p-4 sm:p-5 rounded-full bg-brand-500 text-white hover:bg-brand-600 active:scale-95 shadow-glow-red transition-all"
                   title={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? (
@@ -782,8 +791,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </button>
 
                 <button
-                  onClick={() => handleSeek(10)}
-                  className="pointer-events-auto p-3 sm:p-4 rounded-full bg-black/70 text-white hover:bg-black/90 active:scale-95 border border-white/10 backdrop-blur-md transition-all shadow-xl flex flex-col items-center gap-0.5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSeek(10);
+                  }}
+                  className="pointer-events-auto p-3 sm:p-4 rounded-full bg-black/60 text-white hover:bg-black/80 active:scale-95 border border-white/20 transition-all shadow-xl flex flex-col items-center gap-0.5"
                   title="Maju 10 Detik"
                 >
                   <RotateCw className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -802,7 +814,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
               {/* Bottom Seekbar & Controls Bar (Anchored INSIDE 16:9 Video Box) */}
               <div
-                className={`absolute bottom-0 left-0 right-0 p-2.5 sm:p-3 bg-gradient-to-t from-black/95 via-black/80 to-transparent z-30 transition-opacity duration-300 ${
+                className={`absolute bottom-0 left-0 right-0 p-2.5 sm:p-3 bg-gradient-to-t from-black/95 via-black/80 to-transparent z-30 transition-opacity duration-200 ${
                   controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
               >
