@@ -908,7 +908,9 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 <div
                   ref={subtitleRef}
                   style={{ display: 'none', whitespace: 'pre-line' }}
-                  className="absolute bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-2xl px-2 py-1 text-white text-sm sm:text-base md:text-lg font-normal text-center z-20 pointer-events-none transition-all [text-shadow:_0_2px_6px_rgba(0,0,0,0.95),_0_0_3px_rgba(0,0,0,0.9)] leading-snug"
+                  className={`absolute left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-2xl px-2 py-1 text-white text-xs sm:text-base md:text-lg font-medium text-center z-20 pointer-events-none transition-all duration-200 [text-shadow:_0_2px_6px_rgba(0,0,0,0.95),_0_0_3px_rgba(0,0,0,0.9)] leading-snug ${
+                    controlsVisible ? 'bottom-16 sm:bottom-20' : 'bottom-3 sm:bottom-6'
+                  }`}
                 />
               )}
 

@@ -264,11 +264,6 @@ function AppContent() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-400">
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-white">IDLIX Stream Web</span>
-              <span>•</span>
-              <span>Backend API: D:\Projects\Self\idlix-api</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>Dibuat dengan React & Tailwind CSS</span>
             </div>
           </div>
         </footer>

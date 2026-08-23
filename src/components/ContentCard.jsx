@@ -29,18 +29,19 @@ export default function ContentCard({ media, onSelect }) {
         <div className="absolute inset-0 bg-gradient-to-t from-dark-base via-transparent to-black/30 opacity-70 group-hover:opacity-90 transition-opacity" />
 
         {/* Top Badges */}
-        <div className="absolute top-2 left-2 right-2 flex items-center justify-between z-10">
-          <span className="px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase rounded bg-brand-500/90 text-white shadow-sm backdrop-blur-sm">
+        <div className="absolute top-2 left-2 right-2 flex items-center justify-between z-20 pointer-events-none">
+          <span className="px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase rounded bg-brand-500/90 text-white shadow-sm backdrop-blur-sm pointer-events-auto">
             {media.quality || 'HD'}
           </span>
 
           {/* Bookmark Button */}
           <button
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
               toggleWatchlist(media);
             }}
-            className={`p-1.5 rounded-full backdrop-blur-md transition-all ${
+            className={`p-1.5 rounded-full backdrop-blur-md transition-all cursor-pointer pointer-events-auto active:scale-95 ${
               isBookmarked 
                 ? 'bg-brand-500 text-white shadow-glow-red' 
                 : 'bg-black/50 text-gray-300 hover:text-white hover:bg-black/80'
@@ -52,7 +53,7 @@ export default function ContentCard({ media, onSelect }) {
         </div>
 
         {/* Play Button Overlay on Hover */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 z-10">
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 z-10 pointer-events-none">
           <div className="w-12 h-12 rounded-full bg-brand-500/90 text-white flex items-center justify-center shadow-glow-red transform scale-75 group-hover:scale-100 transition-transform">
             <Play className="w-6 h-6 fill-white ml-1" />
           </div>
