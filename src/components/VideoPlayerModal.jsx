@@ -5,8 +5,6 @@ import {
   AlertCircle, 
   RefreshCw, 
   Film, 
-  Tv, 
-  ExternalLink, 
   Copy, 
   Check, 
   MonitorPlay, 
@@ -231,50 +229,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     resetControlsTimeout();
   };
 
-  const handleOpenVLC = () => {
-    const rawStream = streamUrl;
-    const subUrl = selectedSub
-      ? selectedSub.startsWith('http')
-        ? selectedSub
-        : `${getApiBaseUrl()}${selectedSub.startsWith('/') ? '' : '/'}${selectedSub}`
-      : '';
 
-    const isAndroid = /Android/i.test(navigator.userAgent);
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-    if (isAndroid) {
-      let cleanUrl = rawStream.replace(/^https?:\/\//, '');
-      let intentUrl = `intent://${cleanUrl}#Intent;action=android.intent.action.VIEW;type=video/*;package=org.videolan.vlc;`;
-      if (subUrl) {
-        intentUrl += `S.subtitles_location=${subUrl};`;
-        intentUrl += `S.sub=${subUrl};`;
-      }
-      intentUrl += 'end';
-      window.location.href = intentUrl;
-    } else if (isIOS) {
-      window.location.href = `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(rawStream)}${
-        subUrl ? `&sub=${encodeURIComponent(subUrl)}` : ''
-      }`;
-    } else {
-      const fileName = `${displayData.title.replace(/[^a-z0-9]/gi, '_')}.m3u`;
-      let m3uText = `#EXTM3U\n#EXTINF:-1, ${displayData.title}\n`;
-      if (subUrl) {
-        m3uText += `#EXTVLCOPT:sub-file=${subUrl}\n`;
-        m3uText += `#EXTVLCOPT:input-slave=${subUrl}\n`;
-      }
-      m3uText += `${rawStream}\n`;
-
-      const blob = new Blob([m3uText], { type: 'audio/x-mpegurl' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }
-  };
 
   const formatTime = (secs) => {
     if (isNaN(secs) || secs < 0) return '00:00';
@@ -682,29 +637,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           </div>
 
           <div className="flex items-center gap-2 pointer-events-auto">
-            {streamUrl && (
-              <>
-                <button
-                  onClick={handleOpenVLC}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold transition-all shadow-md shrink-0"
-                  title="Buka & Putar Stream di Aplikasi VLC Media Player (Bebas Lag + Subtitle Otomatis)"
-                >
-                  <Tv className="w-4 h-4 text-amber-200" />
-                  <span className="hidden sm:inline">Buka VLC</span>
-                </button>
 
-                <a
-                  href={streamUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-xs font-bold transition-all shadow-glow-red shrink-0"
-                  title="Buka Stream di Tab Baru (Gunakan Player Bawaan Browser)"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span className="hidden sm:inline">Tab Baru</span>
-                </a>
-              </>
-            )}
 
             {/* Subtitle Selector */}
             {subtitlesList.length > 0 && (
