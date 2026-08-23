@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Film, Tv, Trophy, Flame, History, Play, Trash2, Sparkles } from 'lucide-react';
+import { Film, Tv, Trophy, Flame, History, Play, Trash2, Sparkles, Globe } from 'lucide-react';
 import HeroBanner from '../components/HeroBanner';
 import ContentRail from '../components/ContentRail';
 import { useWatchHistory } from '../context/WatchHistoryContext';
@@ -8,11 +8,15 @@ import {
   getHomeFlat,
   getFeatured, 
   getCinemaXXI, 
+  getMovies,
+  getSeries,
   getTrendingMovies, 
   getTrendingSeries, 
   getLeaderboard,
   getNetworks,
   getByNetwork,
+  getByCountry,
+  getByGenre,
   searchContent,
   extractMediaArray,
   normalizeMediaItem 
@@ -52,9 +56,21 @@ const NETWORK_STYLES = {
   },
 };
 
+const POPULAR_COUNTRIES = [
+  { name: 'Korea Selatan', code: 'KR', flag: '🇰🇷' },
+  { name: 'Jepang', code: 'JP', flag: '🇯🇵' },
+  { name: 'Amerika Serikat', code: 'US', flag: '🇺🇸' },
+  { name: 'Inggris (UK)', code: 'GB', flag: '🇬🇧' },
+  { name: 'Thailand', code: 'TH', flag: '🇹🇭' },
+  { name: 'Taiwan', code: 'TW', flag: '🇹🇼' },
+];
+
 export default function HomeView({ onSelectMedia, onPlayStream }) {
   const { watchHistory, removeFromHistory, clearHistory } = useWatchHistory();
   const [featuredItems, setFeaturedItems] = useState([]);
+  const [recentMovies, setRecentMovies] = useState([]);
+  const [recentSeries, setRecentSeries] = useState([]);
+  const [animeItems, setAnimeItems] = useState([]);
   const [cinemaXXIItems, setCinemaXXIItems] = useState([]);
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [trendingSeries, setTrendingSeries] = useState([]);
@@ -67,14 +83,22 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
   const [networkItems, setNetworkItems] = useState([]);
   const [isLoadingNetwork, setIsLoadingNetwork] = useState(false);
 
+  // Country Catalog State
+  const [selectedCountry, setSelectedCountry] = useState(POPULAR_COUNTRIES[0]);
+  const [countryItems, setCountryItems] = useState([]);
+  const [isLoadingCountry, setIsLoadingCountry] = useState(false);
+
   useEffect(() => {
     let isMounted = true;
 
     const loadData = async () => {
       setIsLoading(true);
 
-      const [featRes, xx1Res, movRes, serRes, leadRes, secRes, flatRes] = await Promise.all([
+      const [featRes, recRes, recSerRes, animeRes, xx1Res, movRes, serRes, leadRes, secRes, flatRes] = await Promise.all([
         getFeatured(),
+        getMovies(),
+        getSeries(),
+        getByGenre('animation'),
         getCinemaXXI(),
         getTrendingMovies(),
         getTrendingSeries(),
@@ -96,6 +120,24 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
         feats = flatItems.slice(0, 5);
       }
       setFeaturedItems(feats);
+
+      // 2. Recently Added Movies
+      let recs = recRes.success ? extractMediaArray(recRes.data).map(normalizeMediaItem) : [];
+      if (recs.length === 0 && flatItems.length > 0) {
+        recs = flatItems.filter((i) => i.type === 'movie');
+      }
+      setRecentMovies(recs);
+
+      // 3. Recently Added Series
+      let recSeries = recSerRes.success ? extractMediaArray(recSerRes.data).map(normalizeMediaItem) : [];
+      if (recSeries.length === 0 && flatItems.length > 0) {
+        recSeries = flatItems.filter((i) => i.type === 'series');
+      }
+      setRecentSeries(recSeries);
+
+      // 4. Anime & Animasi
+      let animes = animeRes.success ? extractMediaArray(animeRes.data).map(normalizeMediaItem) : [];
+      setAnimeItems(animes);
 
       // 2. CinemaXXI items
       let xx1 = xx1Res.success ? extractMediaArray(xx1Res.data).map(normalizeMediaItem) : [];
@@ -216,6 +258,28 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
     return () => { isMounted = false; };
   }, [selectedNetwork]);
 
+  // Fetch Content for Selected Country
+  useEffect(() => {
+    if (!selectedCountry?.code) return;
+    let isMounted = true;
+
+    const loadCountryContent = async () => {
+      setIsLoadingCountry(true);
+      const res = await getByCountry(selectedCountry.code);
+      if (!isMounted) return;
+      if (res.success && res.data) {
+        const items = extractMediaArray(res.data).map(normalizeMediaItem);
+        setCountryItems(items);
+      } else {
+        setCountryItems([]);
+      }
+      setIsLoadingCountry(false);
+    };
+
+    loadCountryContent();
+    return () => { isMounted = false; };
+  }, [selectedCountry]);
+
   return (
     <div className="space-y-3 sm:space-y-4 pb-8">
       
@@ -238,9 +302,6 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
                 <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
                   Lanjutkan Menonton
                 </h2>
-                <p className="text-xs text-gray-400">
-                  Lanjutkan dari posisi menit terakhir Anda menonton
-                </p>
               </div>
             </div>
 
@@ -348,9 +409,6 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
                 <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
                   Streaming Network Originals
                 </h2>
-                <p className="text-xs text-gray-400">
-                  Pilih studio / network favorit Anda untuk melihat film & serial original
-                </p>
               </div>
             </div>
 
@@ -385,7 +443,6 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
           {/* Network Content Rail */}
           <ContentRail
             title={`${selectedNetwork?.name || 'Network'} Originals`}
-            subtitle={`Koleksi film & TV series buatan original ${selectedNetwork?.name || ''}`}
             icon={Tv}
             items={networkItems}
             isLoading={isLoadingNetwork}
@@ -394,10 +451,83 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
         </div>
       )}
 
+      {/* Country Catalog Section */}
+      <div className="space-y-2 pt-0.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                Katalog Berdasarkan Negara
+              </h2>
+            </div>
+          </div>
+
+          {/* Country Selector Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar py-1">
+            {POPULAR_COUNTRIES.map((c) => {
+              const isSelected = selectedCountry?.code === c.code;
+
+              return (
+                <button
+                  key={c.code}
+                  onClick={() => setSelectedCountry(c)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shrink-0 ${
+                    isSelected
+                      ? 'bg-blue-600 text-white shadow-lg border-blue-400 font-extrabold'
+                      : 'bg-dark-card text-gray-300 border-white/10 hover:border-white/20 hover:text-white active:scale-95'
+                  }`}
+                >
+                  <span className="text-sm">{c.flag}</span>
+                  <span>{c.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Country Content Rail */}
+        <ContentRail
+          title={`Film & Series ${selectedCountry?.name || ''}`}
+          icon={Globe}
+          items={countryItems}
+          isLoading={isLoadingCountry}
+          onSelectMedia={onSelectMedia}
+        />
+      </div>
+
+      {/* Recently Added Movies Rail */}
+      <ContentRail
+        title="Recently Added Movies"
+        icon={Film}
+        items={recentMovies}
+        isLoading={isLoading}
+        onSelectMedia={onSelectMedia}
+      />
+
+      {/* Recently Added Series Rail */}
+      <ContentRail
+        title="Recently Added Series"
+        icon={Tv}
+        items={recentSeries}
+        isLoading={isLoading}
+        onSelectMedia={onSelectMedia}
+      />
+
+      {/* Anime & Animasi Rail */}
+      <ContentRail
+        title="Anime & Animasi Populer"
+        icon={Sparkles}
+        items={animeItems}
+        isLoading={isLoading}
+        onSelectMedia={onSelectMedia}
+      />
+
       {/* CinemaXXI Movies Rail */}
       <ContentRail
         title="Bioskop XXI Terbaru"
-        subtitle="Rilisan film terbaru yang sedang tayang di bioskop XXI"
         icon={Film}
         items={cinemaXXIItems}
         isLoading={isLoading}
@@ -407,7 +537,6 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
       {/* Trending Movies Rail */}
       <ContentRail
         title="Film Trending"
-        subtitle="Paling banyak ditonton minggu ini"
         icon={Flame}
         items={trendingMovies}
         isLoading={isLoading}
@@ -417,7 +546,6 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
       {/* Trending Series Rail */}
       <ContentRail
         title="TV Series & K-Drama Populer"
-        subtitle="Serial TV terpopuler dengan rating tertinggi"
         icon={Tv}
         items={trendingSeries}
         isLoading={isLoading}
@@ -427,7 +555,6 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
       {/* Leaderboard Ranking Rail */}
       <ContentRail
         title="Leaderboard Top Rank"
-        subtitle="Peringkat teratas terfavorit pengguna IDLIX"
         icon={Trophy}
         items={leaderboardItems}
         isLoading={isLoading}

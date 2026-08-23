@@ -230,6 +230,14 @@ function AppContent() {
             />
           )}
 
+          {activeTab === 'anime' && (
+            <CategoryView 
+              selectedCategory={{ categoryType: 'genre', slug: 'animation', name: 'Anime & Animasi' }}
+              onBack={() => handleTabChange('home')}
+              onSelectMedia={handleOpenDetailMedia}
+            />
+          )}
+
           {activeTab === 'leaderboard' && (
             <LeaderboardView 
               onSelectMedia={handleOpenDetailMedia}

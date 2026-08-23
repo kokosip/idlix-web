@@ -13,7 +13,8 @@ import {
   Loader2,
   User,
   LogIn,
-  ArrowLeft
+  ArrowLeft,
+  Sparkles
 } from 'lucide-react';
 import { searchContent, normalizeMediaItem } from '../services/api';
 import { useWatchlist } from '../context/WatchlistContext';
@@ -85,6 +86,7 @@ export default function Navbar({
     { id: 'home', label: 'Beranda', icon: Film },
     { id: 'movies', label: 'Film', icon: Film },
     { id: 'series', label: 'TV Series', icon: Tv },
+    { id: 'anime', label: 'Anime', icon: Sparkles },
     { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
     { id: 'watchlist', label: 'Watchlist', icon: Bookmark, badge: watchlist.length },
   ];
