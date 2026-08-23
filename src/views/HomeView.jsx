@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Film, Tv, Trophy, Flame, History, Play, Trash2 } from 'lucide-react';
+import { Film, Tv, Trophy, Flame, History, Play, Trash2, Sparkles } from 'lucide-react';
 import HeroBanner from '../components/HeroBanner';
 import ContentRail from '../components/ContentRail';
 import { useWatchHistory } from '../context/WatchHistoryContext';
@@ -11,6 +11,9 @@ import {
   getTrendingMovies, 
   getTrendingSeries, 
   getLeaderboard,
+  getNetworks,
+  getByNetwork,
+  searchContent,
   extractMediaArray,
   normalizeMediaItem 
 } from '../services/api';
@@ -26,6 +29,29 @@ const formatTime = (secs) => {
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 };
 
+const NETWORK_STYLES = {
+  'netflix': {
+    bg: 'from-red-950/60 to-dark-card border-red-500/30 text-red-400 hover:border-red-500',
+    active: 'bg-red-600 text-white shadow-glow-red border-red-500 font-extrabold',
+  },
+  'hbo': {
+    bg: 'from-purple-950/60 to-dark-card border-purple-500/30 text-purple-400 hover:border-purple-500',
+    active: 'bg-purple-600 text-white shadow-lg border-purple-500 font-extrabold',
+  },
+  'prime-video': {
+    bg: 'from-sky-950/60 to-dark-card border-sky-500/30 text-sky-400 hover:border-sky-500',
+    active: 'bg-sky-600 text-white shadow-lg border-sky-500 font-extrabold',
+  },
+  'disney-plus': {
+    bg: 'from-blue-950/60 to-dark-card border-blue-500/30 text-blue-400 hover:border-blue-500',
+    active: 'bg-blue-600 text-white shadow-lg border-blue-500 font-extrabold',
+  },
+  'apple-tv-plus': {
+    bg: 'from-slate-800 to-dark-card border-slate-400/30 text-slate-300 hover:border-slate-300',
+    active: 'bg-slate-200 text-black shadow-lg border-white font-black',
+  },
+};
+
 export default function HomeView({ onSelectMedia, onPlayStream }) {
   const { watchHistory, removeFromHistory, clearHistory } = useWatchHistory();
   const [featuredItems, setFeaturedItems] = useState([]);
@@ -34,6 +60,12 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
   const [trendingSeries, setTrendingSeries] = useState([]);
   const [leaderboardItems, setLeaderboardItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Network Originals State
+  const [networks, setNetworks] = useState([]);
+  const [selectedNetwork, setSelectedNetwork] = useState({ name: 'Netflix', slug: 'netflix' });
+  const [networkItems, setNetworkItems] = useState([]);
+  const [isLoadingNetwork, setIsLoadingNetwork] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -109,8 +141,83 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
     return () => { isMounted = false; };
   }, []);
 
+  // Fetch Networks List
+  useEffect(() => {
+    let isMounted = true;
+    const fetchNetworksList = async () => {
+      const res = await getNetworks();
+      if (!isMounted) return;
+      if (res.success && res.data) {
+        const raw = Array.isArray(res.data) ? res.data : res.data.networks || res.data.data || [];
+        const formatted = raw.map((n) => ({
+          name: n.title || n.name || n.slug,
+          slug: n.slug || n.value || n.network,
+        }));
+        if (formatted.length > 0) {
+          setNetworks(formatted);
+          setSelectedNetwork(formatted[0]);
+          return;
+        }
+      }
+      // Default fallback networks
+      const fallback = [
+        { name: 'Netflix', slug: 'netflix' },
+        { name: 'HBO', slug: 'hbo' },
+        { name: 'Prime Video', slug: 'prime-video' },
+        { name: 'Disney+', slug: 'disney-plus' },
+        { name: 'Apple TV+', slug: 'apple-tv-plus' },
+      ];
+      setNetworks(fallback);
+      setSelectedNetwork(fallback[0]);
+    };
+
+    fetchNetworksList();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Fetch Content for Selected Network
+  useEffect(() => {
+    if (!selectedNetwork?.slug) return;
+    let isMounted = true;
+
+    const loadNetworkContent = async () => {
+      setIsLoadingNetwork(true);
+      const slug = (selectedNetwork.slug || '').toLowerCase();
+
+      let searchQuery = slug;
+      if (slug === 'prime-video' || slug === 'amazon') searchQuery = 'prime';
+      if (slug === 'disney-plus' || slug === 'disney') searchQuery = 'disney';
+      if (slug === 'apple-tv-plus' || slug === 'apple-tv') searchQuery = 'apple';
+      if (slug === 'hbo' || slug === 'hbo-max') searchQuery = 'hbo';
+      if (slug === 'netflix') searchQuery = 'netflix';
+
+      // 1. Fetch network specific titles via network search API
+      let res = await searchContent(searchQuery);
+      let items = [];
+
+      if (res.success && res.data) {
+        items = extractMediaArray(res.data).map(normalizeMediaItem);
+      }
+
+      // 2. Fallback to getByNetwork if search returned nothing
+      if (items.length === 0) {
+        const netRes = await getByNetwork(slug);
+        if (netRes.success && netRes.data) {
+          items = extractMediaArray(netRes.data).map(normalizeMediaItem);
+        }
+      }
+
+      if (!isMounted) return;
+      setNetworkItems(items);
+      setIsLoadingNetwork(false);
+    };
+
+    loadNetworkContent();
+    return () => { isMounted = false; };
+  }, [selectedNetwork]);
+
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-3 sm:space-y-4 pb-8">
       
       {/* Featured Hero Banner */}
       <HeroBanner 
@@ -121,7 +228,7 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
 
       {/* Continue Watching (Lanjutkan Menonton) Rail */}
       {watchHistory.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-brand-500/20 text-brand-400 border border-brand-500/30">
@@ -226,6 +333,64 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Streaming Network Originals Section */}
+      {networks.length > 0 && (
+        <div className="space-y-2 pt-0.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-brand-500/20 text-brand-400 border border-brand-500/30">
+                <Tv className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                  Streaming Network Originals
+                </h2>
+                <p className="text-xs text-gray-400">
+                  Pilih studio / network favorit Anda untuk melihat film & serial original
+                </p>
+              </div>
+            </div>
+
+            {/* Network Brand Selector Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar py-1">
+              {networks.map((net) => {
+                const slugKey = (net.slug || '').toLowerCase();
+                const isSelected = selectedNetwork?.slug === net.slug;
+                const style = NETWORK_STYLES[slugKey] || {
+                  bg: 'from-dark-card to-dark-surface border-white/10 text-gray-300',
+                  active: 'bg-brand-500 text-white shadow-glow-red border-brand-400 font-extrabold',
+                };
+
+                return (
+                  <button
+                    key={net.slug}
+                    onClick={() => setSelectedNetwork(net)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shrink-0 ${
+                      isSelected
+                        ? style.active
+                        : `bg-gradient-to-r ${style.bg} hover:scale-105 active:scale-95`
+                    }`}
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isSelected ? 'fill-current' : 'text-gray-400'}`} />
+                    <span>{net.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Network Content Rail */}
+          <ContentRail
+            title={`${selectedNetwork?.name || 'Network'} Originals`}
+            subtitle={`Koleksi film & TV series buatan original ${selectedNetwork?.name || ''}`}
+            icon={Tv}
+            items={networkItems}
+            isLoading={isLoadingNetwork}
+            onSelectMedia={onSelectMedia}
+          />
         </div>
       )}
 

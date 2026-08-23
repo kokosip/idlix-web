@@ -7,6 +7,7 @@ import {
   getByCountry, 
   getByYear, 
   getByNetwork, 
+  searchContent,
   normalizeMediaItem 
 } from '../services/api';
 
@@ -31,7 +32,18 @@ export default function CategoryView({ selectedCategory, onBack, onSelectMedia }
       } else if (categoryType === 'year') {
         res = await getByYear(slug);
       } else if (categoryType === 'network') {
-        res = await getByNetwork(slug);
+        const slugKey = (slug || name || '').toLowerCase();
+        let searchQuery = slugKey;
+        if (slugKey.includes('prime') || slugKey.includes('amazon')) searchQuery = 'prime';
+        if (slugKey.includes('disney')) searchQuery = 'disney';
+        if (slugKey.includes('apple')) searchQuery = 'apple';
+        if (slugKey.includes('hbo')) searchQuery = 'hbo';
+        if (slugKey.includes('netflix')) searchQuery = 'netflix';
+
+        res = await searchContent(searchQuery);
+        if (!res || !res.success || !res.data || res.data.length === 0) {
+          res = await getByNetwork(slug);
+        }
       }
 
       if (isMounted) {

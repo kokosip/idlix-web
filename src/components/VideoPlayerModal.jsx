@@ -15,7 +15,8 @@ import {
   RotateCcw, 
   RotateCw,
   Play,
-  Pause
+  Pause,
+  Scaling
 } from 'lucide-react';
 import Hls from 'hls.js';
 import { getMovieStream, getEpisodeStream, normalizeMediaItem, getApiBaseUrl } from '../services/api';
@@ -29,6 +30,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [playerMode, setPlayerMode] = useState('auto'); // 'auto', 'hls', 'iframe'
   const [copied, setCopied] = useState(false);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
+  const [zoomMode, setZoomMode] = useState('contain'); // 'contain' (Original Fit), 'cover' (Zoom Fit / Crop Fill), 'fill' (Stretch)
 
   // Playback & Seekbar state (Isolated to prevent 4x/sec React re-render bottleneck)
   const [duration, setDuration] = useState(0);
@@ -56,6 +58,21 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [resumedNotice, setResumedNotice] = useState(null);
   const hasAutoResumedRef = useRef(false);
   const lastSavedTimeRef = useRef(0);
+
+  const toggleZoomMode = () => {
+    setZoomMode((prev) => {
+      if (prev === 'contain') return 'cover';
+      if (prev === 'cover') return 'fill';
+      return 'contain';
+    });
+    resetControlsTimeout(2000);
+  };
+
+  const getZoomLabel = () => {
+    if (zoomMode === 'cover') return 'Zoom Fit';
+    if (zoomMode === 'fill') return 'Stretch';
+    return 'Fit Original';
+  };
 
   const checkAndResumePlayback = (video) => {
     if (hasAutoResumedRef.current || !video || !displayData) return;
@@ -667,6 +684,20 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               <span className="hidden sm:inline text-xs">{isEmbedIframe ? 'Iframe' : 'HLS Direct'}</span>
             </button>
 
+            {/* Zoom Fit Toggle Button */}
+            <button
+              onClick={toggleZoomMode}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 backdrop-blur-md active:scale-95 ${
+                zoomMode !== 'contain'
+                  ? 'bg-brand-500 text-white border-brand-400 shadow-glow-red'
+                  : 'bg-black/60 hover:bg-white/20 text-white border-white/10'
+              }`}
+              title={`Mode Layar Video: ${getZoomLabel()}`}
+            >
+              <Scaling className="w-4 h-4 text-brand-300" />
+              <span className="text-xs">{getZoomLabel()}</span>
+            </button>
+
             <button
               onClick={toggleDeviceFullscreen}
               className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all active:scale-95"
@@ -767,7 +798,13 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                     });
                   }
                 }}
-                className="w-full h-full object-contain cursor-pointer z-0"
+                className={`w-full h-full cursor-pointer z-0 transition-all duration-300 ${
+                  zoomMode === 'cover'
+                    ? 'object-cover'
+                    : zoomMode === 'fill'
+                    ? 'object-fill'
+                    : 'object-contain'
+                }`}
               />
 
               {/* Resumed Playback Toast Notification */}
@@ -884,7 +921,24 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
+                    {/* Zoom Fit Toggle Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleZoomMode();
+                      }}
+                      className={`p-2 rounded-lg border text-xs font-bold transition-all flex items-center gap-1.5 backdrop-blur-md active:scale-95 ${
+                        zoomMode !== 'contain'
+                          ? 'bg-brand-500 text-white border-brand-400 shadow-glow-red'
+                          : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                      }`}
+                      title={`Mode Zoom Video: ${getZoomLabel()}`}
+                    >
+                      <Scaling className="w-4 h-4" />
+                      <span className="hidden sm:inline text-xs font-semibold">{getZoomLabel()}</span>
+                    </button>
+
                     <button
                       onClick={toggleDeviceFullscreen}
                       className="p-2 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-white backdrop-blur-md transition-all flex items-center gap-1.5"

@@ -25,9 +25,9 @@ export default function ContentRail({
   };
 
   return (
-    <section className="py-6 relative">
+    <section className="py-2 relative">
       {/* Section Header */}
-      <div className="flex items-center justify-between mb-4 px-4 sm:px-0">
+      <div className="flex items-center justify-between mb-2.5 px-4 sm:px-0">
         <div className="flex items-center gap-2">
           {Icon && (
             <div className="p-1.5 rounded-lg bg-brand-500/10 text-brand-500 border border-brand-500/20">
@@ -64,7 +64,7 @@ export default function ContentRail({
       {/* Rail Container */}
       <div 
         ref={scrollRef}
-        className="flex gap-3 sm:gap-4 overflow-x-auto hide-scrollbar scroll-smooth snap-x snap-mandatory pb-4 px-4 sm:px-0 -mx-4 sm:mx-0"
+        className="flex gap-3 sm:gap-4 overflow-x-auto hide-scrollbar scroll-smooth snap-x snap-mandatory pb-2 px-4 sm:px-0 -mx-4 sm:mx-0"
       >
         {isLoading ? (
           Array.from({ length: 6 }).map((_, idx) => (
