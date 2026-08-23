@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { getMovieDetail, getSeriesDetail, getSeasonDetail, normalizeMediaItem } from '../services/api';
 import { useWatchlist } from '../context/WatchlistContext';
+import { useWatchHistory } from '../context/WatchHistoryContext';
 
 export default function DetailModal({ media, onClose, onPlayStream }) {
   const [detail, setDetail] = useState(null);
@@ -24,6 +25,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
   const [episodes, setEpisodes] = useState([]);
   const [isLoadingSeason, setIsLoadingSeason] = useState(false);
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
+  const { getSavedProgress, getMediaProgress } = useWatchHistory();
 
   // Disable background page scrolling while detail modal is open
   useEffect(() => {
@@ -328,13 +330,13 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                       const epTitle = ep.title || ep.name || `Episode ${epNum}`;
                       const epOverview = ep.overview || ep.synopsis || ep.description || 'Klik untuk memutar episode ini.';
                       const epThumb = ep.stillPath || ep.still_path || ep.thumbnail || ep.poster || displayData.backdrop;
-                      const epRuntime = ep.runtime ? `${ep.runtime} min` : null;
+                      const epSaved = getSavedProgress(displayData.slug, selectedSeason, epNum);
 
                       return (
                         <div
                           key={idx}
                           onClick={() => onPlayStream(displayData, { season: selectedSeason, episode: epNum })}
-                          className="group p-3 rounded-xl bg-dark-card border border-dark-border hover:border-brand-500/60 hover:bg-dark-hover transition-all cursor-pointer flex items-center gap-3"
+                          className="group p-3 rounded-xl bg-dark-card border border-dark-border hover:border-brand-500/60 hover:bg-dark-hover transition-all cursor-pointer flex items-center gap-3 relative overflow-hidden"
                         >
                           <div className="relative w-24 h-16 rounded-lg overflow-hidden bg-dark-surface flex-shrink-0">
                             <img
@@ -348,20 +350,25 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-brand-500/30 transition-colors">
                               <Play className="w-5 h-5 fill-white text-white" />
                             </div>
+                            {epSaved && epSaved.percent > 0 && (
+                              <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/60">
+                                <div className="h-full bg-brand-500 shadow-glow-red" style={{ width: `${epSaved.percent}%` }} />
+                              </div>
+                            )}
                           </div>
+
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[11px] text-brand-500 font-bold">
-                                Episode {epNum}
-                              </span>
-                              {epRuntime && (
-                                <span className="text-[10px] text-gray-400">{epRuntime}</span>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <h4 className="text-xs font-bold text-white group-hover:text-brand-400 transition-colors truncate">
+                                Ep {epNum}. {epTitle}
+                              </h4>
+                              {epSaved && (
+                                <span className="text-[10px] font-extrabold text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded border border-brand-500/20 shrink-0">
+                                  {epSaved.percent >= 95 ? 'Selesai' : `${epSaved.percent}%`}
+                                </span>
                               )}
                             </div>
-                            <h4 className="text-xs font-bold text-white truncate group-hover:text-brand-500 transition-colors">
-                              {epTitle}
-                            </h4>
-                            <p className="text-[10px] text-gray-400 line-clamp-2 mt-0.5 leading-snug">
+                            <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed">
                               {epOverview}
                             </p>
                           </div>

@@ -16,6 +16,7 @@ import FilterDrawer from './components/FilterDrawer';
 import MobileBottomNav from './components/MobileBottomNav';
 
 import { WatchlistProvider } from './context/WatchlistContext';
+import { WatchHistoryProvider } from './context/WatchHistoryContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { checkApiStatus } from './services/api';
 import { Loader2 } from 'lucide-react';
@@ -315,7 +316,9 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <WatchHistoryProvider>
+        <AppContent />
+      </WatchHistoryProvider>
     </AuthProvider>
   );
 }

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import Hls from 'hls.js';
 import { getMovieStream, getEpisodeStream, normalizeMediaItem, getApiBaseUrl } from '../services/api';
+import { useWatchHistory } from '../context/WatchHistoryContext';
 
 export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [streamData, setStreamData] = useState(null);
@@ -53,6 +54,48 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const seasonNum = episodeInfo?.season || 1;
   const episodeNum = episodeInfo?.episode || 1;
 
+  const { saveProgress, getSavedProgress } = useWatchHistory();
+  const [resumedNotice, setResumedNotice] = useState(null);
+  const hasAutoResumedRef = useRef(false);
+  const lastSavedTimeRef = useRef(0);
+
+  const checkAndResumePlayback = (video) => {
+    if (hasAutoResumedRef.current || !video || !displayData) return;
+    const dur = video.duration || duration || 0;
+    if (!dur || dur <= 0) return;
+
+    const saved = getSavedProgress(
+      displayData.slug,
+      isSeries ? seasonNum : undefined,
+      isSeries ? episodeNum : undefined
+    );
+
+    if (saved && saved.progress > 5 && saved.progress < dur - 10) {
+      video.currentTime = saved.progress;
+      hasAutoResumedRef.current = true;
+      lastSavedTimeRef.current = saved.progress;
+      setResumedNotice({
+        time: saved.progress,
+        formatted: formatTime(saved.progress),
+      });
+      setTimeout(() => setResumedNotice(null), 6000);
+    } else {
+      hasAutoResumedRef.current = true;
+    }
+  };
+
+  const handleStartOver = () => {
+    const video = videoRef.current;
+    if (video) {
+      video.currentTime = 0;
+      if (seekbarRef.current) seekbarRef.current.value = 0;
+      if (timeTextRef.current) {
+        timeTextRef.current.textContent = `${formatTime(0)} / ${formatTime(video.duration || duration)}`;
+      }
+    }
+    setResumedNotice(null);
+  };
+
   const handleTimeUpdate = (e) => {
     const video = e.target;
     if (!video) return;
@@ -79,6 +122,17 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         subtitleRef.current.innerHTML = newText.replace(/\n/g, '<br>');
         subtitleRef.current.style.display = newText ? 'block' : 'none';
       }
+    }
+
+    // Throttled Watch History save (every 5 seconds)
+    if (Math.abs(time - lastSavedTimeRef.current) >= 5 && dur > 0 && displayData) {
+      lastSavedTimeRef.current = time;
+      saveProgress({
+        media: displayData,
+        episodeInfo: isSeries ? { season: seasonNum, episode: episodeNum } : null,
+        currentTime: time,
+        duration: dur,
+      });
     }
   };
 
@@ -275,7 +329,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     };
   }, []);
 
-  const resetControlsTimeout = (delay = 1500) => {
+  const resetControlsTimeout = (delay = 2000) => {
     setControlsVisible(true);
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
@@ -285,11 +339,18 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     }, delay);
   };
 
+  // Auto-hide navigation controls 2 seconds after stream loads / starts playing
+  useEffect(() => {
+    if (streamData && !isLoading) {
+      resetControlsTimeout(2000);
+    }
+  }, [streamData, isLoading]);
+
   const handlePlayerClick = (e) => {
-    // If click is on interactive elements (button, input, select, link, option), keep controls visible & reset 1.5s timer
+    // If click is on interactive elements (button, input, select, link, option), keep controls visible & reset 2s timer
     const isInteractive = e.target.closest('button, input, select, a, option');
     if (isInteractive) {
-      resetControlsTimeout(1500);
+      resetControlsTimeout(2000);
       return;
     }
 
@@ -301,10 +362,10 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     setControlsVisible((prev) => {
       const nextState = !prev;
       if (nextState) {
-        // If turning ON controls, auto dismiss after 1.5s
+        // If turning ON controls, auto dismiss after 2s
         controlsTimeoutRef.current = setTimeout(() => {
           setControlsVisible(false);
-        }, 1500);
+        }, 2000);
       }
       // If turning OFF controls, immediately hides without delay
       return nextState;
@@ -328,6 +389,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         }
 
         togglePlayPause();
+        resetControlsTimeout(2000);
       } else if (e.key === 'Escape' && isBrowserFullscreen) {
         setIsBrowserFullscreen(false);
       }
@@ -539,6 +601,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        checkAndResumePlayback(video);
         video.play().catch((err) => {
           console.warn('[VideoPlayer] Autoplay error:', err);
         });
@@ -582,42 +645,34 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
   return (
     <div
-      className={
-        isBrowserFullscreen
-          ? 'fixed inset-0 z-[100] bg-black w-screen h-screen flex flex-col justify-between items-center overflow-hidden select-none touch-none overscroll-none'
-          : 'fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 md:p-6 bg-black/90 backdrop-blur-lg animate-fade-in touch-none overscroll-none'
-      }
-      onMouseMove={resetControlsTimeout}
+      className={`fixed inset-0 z-50 bg-black w-screen h-screen flex flex-col justify-between overflow-hidden select-none touch-none overscroll-none animate-fade-in ${
+        controlsVisible ? 'cursor-default' : 'cursor-none'
+      }`}
+      onMouseMove={() => resetControlsTimeout(2000)}
+      onMouseLeave={() => {
+        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+        setControlsVisible(false);
+      }}
       onClick={handlePlayerClick}
     >
-      <div
-        className={
-          isBrowserFullscreen
-            ? 'relative w-full h-full max-w-none rounded-none border-0 flex flex-col justify-between overflow-hidden bg-black'
-            : 'relative w-full max-w-5xl glass-panel rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-dark-border flex flex-col my-auto'
-        }
-      >
-        {/* Header Bar */}
+      <div className="relative w-full h-full border-0 flex flex-col justify-between overflow-hidden bg-black">
+        {/* Netflix Desktop Style Header Bar */}
         <div
-          className={
-            isBrowserFullscreen
-              ? `absolute top-0 left-0 right-0 p-3 sm:p-5 flex items-center justify-between z-40 bg-gradient-to-b from-black/90 via-black/50 to-transparent transition-opacity duration-300 pointer-events-none ${
-                  controlsVisible ? 'opacity-100' : 'opacity-0'
-                }`
-              : 'p-3 sm:p-4 bg-dark-card border-b border-dark-border flex items-center justify-between gap-3 shrink-0 z-40'
-          }
+          className={`absolute top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between z-40 bg-gradient-to-b from-black/90 via-black/50 to-transparent transition-opacity duration-300 pointer-events-none ${
+            controlsVisible ? 'opacity-100' : 'opacity-0'
+          }`}
         >
-          <div className={`flex items-center gap-3 min-w-0 ${isBrowserFullscreen ? 'pointer-events-auto' : ''}`}>
+          <div className="flex items-center gap-3 min-w-0 pointer-events-auto">
             <button
               onClick={onClose}
-              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all active:scale-95 shrink-0"
-              title="Tutup Player"
+              className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all active:scale-95 shrink-0"
+              title="Tutup Player (Kembali)"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
 
             <div className="min-w-0">
-              <h3 className="text-xs sm:text-base font-extrabold text-white truncate drop-shadow-md">
+              <h3 className="text-sm sm:text-base font-extrabold text-white truncate drop-shadow-md">
                 {displayData.title}
               </h3>
               <p className="text-[11px] text-gray-300 truncate">
@@ -626,39 +681,39 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
           </div>
 
-          <div className={`flex items-center gap-2 ${isBrowserFullscreen ? 'pointer-events-auto' : ''}`}>
+          <div className="flex items-center gap-2 pointer-events-auto">
             {streamUrl && (
               <>
                 <button
                   onClick={handleOpenVLC}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold transition-all shadow-md shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold transition-all shadow-md shrink-0"
                   title="Buka & Putar Stream di Aplikasi VLC Media Player (Bebas Lag + Subtitle Otomatis)"
                 >
-                  <Tv className="w-3.5 h-3.5 text-amber-200" />
-                  <span className="text-[10px] sm:text-[11px]">Buka VLC</span>
+                  <Tv className="w-4 h-4 text-amber-200" />
+                  <span className="hidden sm:inline">Buka VLC</span>
                 </button>
 
                 <a
                   href={streamUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-xs font-bold transition-all shadow-glow-red shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-xs font-bold transition-all shadow-glow-red shrink-0"
                   title="Buka Stream di Tab Baru (Gunakan Player Bawaan Browser)"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span className="text-[10px] sm:text-[11px]">Tab Baru</span>
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="hidden sm:inline">Tab Baru</span>
                 </a>
               </>
             )}
 
             {/* Subtitle Selector */}
             {subtitlesList.length > 0 && (
-              <div className="flex items-center gap-1 bg-black/60 border border-white/10 px-2 py-1 rounded-lg backdrop-blur-md">
-                <span className="text-[10px] text-gray-300 font-medium hidden sm:inline">Sub:</span>
+              <div className="flex items-center gap-1 bg-black/60 border border-white/10 px-2.5 py-1.5 rounded-lg backdrop-blur-md">
+                <span className="text-xs text-gray-300 font-medium hidden sm:inline">Sub:</span>
                 <select
                   value={selectedSub}
                   onChange={(e) => setSelectedSub(e.target.value)}
-                  className="bg-transparent text-white text-[11px] font-semibold focus:outline-none cursor-pointer max-w-[90px] sm:max-w-[120px] truncate"
+                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[100px] sm:max-w-[130px] truncate"
                 >
                   <option value="" className="bg-dark-card text-white">(Off)</option>
                   {subtitlesList.map((sub, idx) => (
@@ -675,13 +730,21 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               className="p-2 rounded-lg bg-black/60 border border-white/10 text-white hover:bg-white/20 text-xs font-semibold transition-all flex items-center gap-1 backdrop-blur-md"
               title="Ganti Player Mode"
             >
-              <Layers className="w-3.5 h-3.5 text-brand-400" />
-              <span className="hidden sm:inline text-[11px]">{isEmbedIframe ? 'Iframe' : 'HLS Direct'}</span>
+              <Layers className="w-4 h-4 text-brand-400" />
+              <span className="hidden sm:inline text-xs">{isEmbedIframe ? 'Iframe' : 'HLS Direct'}</span>
+            </button>
+
+            <button
+              onClick={toggleDeviceFullscreen}
+              className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all active:scale-95"
+              title={isBrowserFullscreen ? 'Keluar Fullscreen Layar' : 'Fullscreen Layar Utuh'}
+            >
+              {isBrowserFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             </button>
 
             <button
               onClick={onClose}
-              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all active:scale-95 hidden sm:block"
+              className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all active:scale-95"
               title="Tutup Player"
             >
               <X className="w-5 h-5" />
@@ -689,15 +752,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           </div>
         </div>
 
-        {/* YouTube Mobile Style Video Box (Anchored 16:9 Aspect Frame) */}
+        {/* Video Box Container (Full Viewport Browser Frame) */}
         <div
           ref={playerContainerRef}
           onClick={handlePlayerClick}
-          className={
-            isBrowserFullscreen
-              ? 'relative w-full h-full bg-black flex items-center justify-center overflow-hidden cursor-pointer'
-              : 'relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden my-auto cursor-pointer'
-          }
+          className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden cursor-pointer"
         >
           {isLoading ? (
             <div className="flex flex-col items-center justify-center p-8 gap-3 text-gray-400">
@@ -749,17 +808,58 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 crossOrigin="anonymous"
                 referrerPolicy="no-referrer"
                 onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={(e) => setDuration(e.target.duration || 0)}
-                onDurationChange={(e) => setDuration(e.target.duration || 0)}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
+                onLoadedMetadata={(e) => {
+                  const dur = e.target.duration || 0;
+                  setDuration(dur);
+                  checkAndResumePlayback(e.target);
+                }}
+                onDurationChange={(e) => {
+                  const dur = e.target.duration || 0;
+                  setDuration(dur);
+                  checkAndResumePlayback(e.target);
+                }}
+                onPlay={() => {
+                  setIsPlaying(true);
+                  resetControlsTimeout(2000);
+                }}
+                onPause={() => {
+                  setIsPlaying(false);
+                  const video = videoRef.current;
+                  if (video && video.currentTime > 3 && (video.duration || duration) > 0 && displayData) {
+                    saveProgress({
+                      media: displayData,
+                      episodeInfo: isSeries ? { season: seasonNum, episode: episodeNum } : null,
+                      currentTime: video.currentTime,
+                      duration: video.duration || duration,
+                    });
+                  }
+                }}
                 className="w-full h-full object-contain cursor-pointer z-0"
               />
 
-              {/* Center Play/Pause & Quick Seek Buttons Overlay (Clean Netflix Style - No Blur) */}
+              {/* Resumed Playback Toast Notification */}
+              {resumedNotice && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-black/85 border border-brand-500/50 text-white text-xs px-4 py-2 rounded-full backdrop-blur-md shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto">
+                  <div className="flex items-center gap-1.5 font-semibold text-gray-200">
+                    <RotateCcw className="w-3.5 h-3.5 text-brand-400" />
+                    <span>Melanjutkan dari <strong className="text-brand-400 font-mono">{resumedNotice.formatted}</strong></span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStartOver();
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-[11px] font-bold transition-all shadow-glow-red shrink-0"
+                  >
+                    Mulai dari Awal
+                  </button>
+                </div>
+              )}
+
+              {/* Center Play/Pause & Quick Seek Buttons Overlay (Clean Netflix Style) */}
               <div
                 onClick={handlePlayerClick}
-                className={`absolute inset-0 flex items-center justify-center gap-6 sm:gap-10 bg-transparent transition-opacity duration-200 z-20 cursor-pointer ${
+                className={`absolute inset-0 flex items-center justify-center gap-6 sm:gap-10 bg-transparent transition-opacity duration-300 z-20 cursor-pointer ${
                   controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
               >
@@ -781,7 +881,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                     togglePlayPause();
                   }}
                   className="pointer-events-auto p-4 sm:p-5 rounded-full bg-brand-500 text-white hover:bg-brand-600 active:scale-95 shadow-glow-red transition-all"
-                  title={isPlaying ? 'Pause' : 'Play'}
+                  title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
                 >
                   {isPlaying ? (
                     <Pause className="w-7 h-7 sm:w-8 sm:h-8 fill-white" />
@@ -808,18 +908,18 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 <div
                   ref={subtitleRef}
                   style={{ display: 'none', whitespace: 'pre-line' }}
-                  className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-2xl px-2 py-1 text-white text-sm sm:text-base md:text-lg font-normal text-center z-20 pointer-events-none transition-all [text-shadow:_0_2px_6px_rgba(0,0,0,0.95),_0_0_3px_rgba(0,0,0,0.9)] leading-snug"
+                  className="absolute bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-2xl px-2 py-1 text-white text-sm sm:text-base md:text-lg font-normal text-center z-20 pointer-events-none transition-all [text-shadow:_0_2px_6px_rgba(0,0,0,0.95),_0_0_3px_rgba(0,0,0,0.9)] leading-snug"
                 />
               )}
 
-              {/* Bottom Seekbar & Controls Bar (Anchored INSIDE 16:9 Video Box) */}
+              {/* Bottom Seekbar & Controls Bar (Netflix Style Gradient Overlay) */}
               <div
-                className={`absolute bottom-0 left-0 right-0 p-2.5 sm:p-3 bg-gradient-to-t from-black/95 via-black/80 to-transparent z-30 transition-opacity duration-200 ${
+                className={`absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-black/95 via-black/80 to-transparent z-30 transition-opacity duration-300 ${
                   controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
               >
                 {/* Seekbar Range Slider */}
-                <div className="flex items-center gap-2 mb-1 px-1">
+                <div className="flex items-center gap-2 mb-2 px-1">
                   <input
                     ref={seekbarRef}
                     type="range"
@@ -829,33 +929,36 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                     defaultValue={0}
                     onChange={handleSeekSliderChange}
                     onInput={handleSeekSliderChange}
-                    className="w-full h-1.5 sm:h-2 bg-gray-700/80 accent-brand-500 rounded-lg cursor-pointer transition-all"
+                    className="w-full h-2 bg-gray-700/80 accent-brand-500 rounded-lg cursor-pointer transition-all hover:h-2.5"
                   />
                 </div>
 
                 {/* Controls Row: Play/Pause, Time, Fullscreen Button */}
                 <div className="flex items-center justify-between text-xs text-white font-bold px-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <button
                       onClick={togglePlayPause}
                       className="p-1.5 rounded-full hover:bg-white/20 active:scale-95 transition-all"
+                      title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
                     >
-                      {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
+                      {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
                     </button>
 
-                    <span ref={timeTextRef} className="text-[11px] text-gray-300 font-mono tracking-tight">
+                    <span ref={timeTextRef} className="text-xs sm:text-sm text-gray-300 font-mono tracking-tight">
                       00:00 / {formatTime(duration)}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* Fullscreen Button in Bottom-Right Corner of Video Box */}
+                  <div className="flex items-center gap-3">
                     <button
                       onClick={toggleDeviceFullscreen}
-                      className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-white backdrop-blur-md transition-all"
-                      title={isBrowserFullscreen ? 'Keluar Fullscreen' : 'Fullscreen Layar Utuh / Rotasi'}
+                      className="p-2 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 text-white backdrop-blur-md transition-all flex items-center gap-1.5"
+                      title={isBrowserFullscreen ? 'Keluar Fullscreen' : 'Fullscreen Layar Utuh'}
                     >
                       {isBrowserFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                      <span className="hidden sm:inline text-xs font-semibold">
+                        {isBrowserFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -864,31 +967,6 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
           )}
         </div>
-
-        {/* Compact Footer Status Bar */}
-        {!isBrowserFullscreen && !isLoading && !error && streamData && (
-          <div className="p-3 bg-dark-card border-t border-dark-border flex items-center justify-between gap-3 text-xs text-gray-300 shrink-0">
-            <div className="flex items-center gap-2">
-              <MonitorPlay className="w-4 h-4 text-brand-500" />
-              <span className="font-semibold text-white">Stream:</span>
-              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold uppercase text-[10px]">
-                {isEmbedIframe ? 'Iframe Stream' : 'Direct HLS (.m3u8)'}
-              </span>
-            </div>
-
-            {streamUrl && (
-              <a
-                href={streamUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-white"
-              >
-                <ExternalLink className="w-3 h-3 text-brand-500" />
-                <span>Stream Link</span>
-              </a>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
