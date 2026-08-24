@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   X, 
   Loader2, 
@@ -16,10 +16,22 @@ import {
   RotateCw,
   Play,
   Pause,
-  Scaling
+  Scaling,
+  ListVideo,
+  SkipForward,
+  ChevronDown,
+  Tv,
+  CheckCircle2
 } from 'lucide-react';
 import Hls from 'hls.js';
-import { getMovieStream, getEpisodeStream, normalizeMediaItem, getApiBaseUrl } from '../services/api';
+import { 
+  getMovieStream, 
+  getEpisodeStream, 
+  getSeriesDetail, 
+  getSeasonDetail, 
+  normalizeMediaItem, 
+  getApiBaseUrl 
+} from '../services/api';
 import { useWatchHistory } from '../context/WatchHistoryContext';
 
 export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
@@ -31,6 +43,18 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [copied, setCopied] = useState(false);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
   const [zoomMode, setZoomMode] = useState('contain'); // 'contain' (Original Fit), 'cover' (Zoom Fit / Crop Fill), 'fill' (Stretch)
+
+  // Series Season & Episode State
+  const [currentSeason, setCurrentSeason] = useState(episodeInfo?.season || 1);
+  const [currentEpisode, setCurrentEpisode] = useState(episodeInfo?.episode || 1);
+  const [currentEpTitle, setCurrentEpTitle] = useState(episodeInfo?.title || `Episode ${episodeInfo?.episode || 1}`);
+
+  // Series Episodes Drawer State
+  const [isEpisodesDrawerOpen, setIsEpisodesDrawerOpen] = useState(false);
+  const [seriesDetail, setSeriesDetail] = useState(null);
+  const [selectedDrawerSeason, setSelectedDrawerSeason] = useState(episodeInfo?.season || 1);
+  const [drawerEpisodes, setDrawerEpisodes] = useState([]);
+  const [isLoadingDrawerEpisodes, setIsLoadingDrawerEpisodes] = useState(false);
 
   // Playback & Seekbar state (Isolated to prevent 4x/sec React re-render bottleneck)
   const [duration, setDuration] = useState(0);
@@ -51,13 +75,61 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
   const displayData = normalizeMediaItem(media);
   const isSeries = displayData?.type === 'series';
-  const seasonNum = episodeInfo?.season || 1;
-  const episodeNum = episodeInfo?.episode || 1;
 
   const { saveProgress, getSavedProgress } = useWatchHistory();
   const [resumedNotice, setResumedNotice] = useState(null);
   const hasAutoResumedRef = useRef(false);
   const lastSavedTimeRef = useRef(0);
+
+  // Sync state when props change
+  useEffect(() => {
+    if (episodeInfo) {
+      setCurrentSeason(episodeInfo.season || 1);
+      setCurrentEpisode(episodeInfo.episode || 1);
+      setCurrentEpTitle(episodeInfo.title || `Episode ${episodeInfo.episode || 1}`);
+      setSelectedDrawerSeason(episodeInfo.season || 1);
+    }
+  }, [episodeInfo]);
+
+  // Fetch Series Details & Season Episode List for Drawer
+  useEffect(() => {
+    if (!isSeries || !displayData?.slug) return;
+
+    let isMounted = true;
+    const fetchSeriesData = async () => {
+      const res = await getSeriesDetail(displayData.slug);
+      if (isMounted && res.success && res.data) {
+        const detailObj = res.data.data || res.data;
+        setSeriesDetail(detailObj);
+      }
+    };
+
+    fetchSeriesData();
+    return () => { isMounted = false; };
+  }, [isSeries, displayData?.slug]);
+
+  // Fetch episodes when selected season in drawer changes
+  const loadDrawerSeasonEpisodes = useCallback(async (seasonNum) => {
+    if (!displayData?.slug) return;
+    setIsLoadingDrawerEpisodes(true);
+
+    const res = await getSeasonDetail(displayData.slug, seasonNum);
+    setIsLoadingDrawerEpisodes(false);
+
+    if (res.success && res.data) {
+      const rawData = res.data;
+      const list = rawData.episodes || rawData.data?.episodes || rawData.data || rawData;
+      setDrawerEpisodes(Array.isArray(list) ? list : []);
+    } else {
+      setDrawerEpisodes([]);
+    }
+  }, [displayData?.slug]);
+
+  useEffect(() => {
+    if (isSeries && displayData?.slug) {
+      loadDrawerSeasonEpisodes(selectedDrawerSeason);
+    }
+  }, [isSeries, displayData?.slug, selectedDrawerSeason, loadDrawerSeasonEpisodes]);
 
   const toggleZoomMode = () => {
     setZoomMode((prev) => {
@@ -81,8 +153,8 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
     const saved = getSavedProgress(
       displayData.slug,
-      isSeries ? seasonNum : undefined,
-      isSeries ? episodeNum : undefined
+      isSeries ? currentSeason : undefined,
+      isSeries ? currentEpisode : undefined
     );
 
     if (saved && saved.progress > 5 && saved.progress < dur - 10) {
@@ -117,7 +189,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     const time = video.currentTime;
     const dur = video.duration || duration || 0;
 
-    // Direct DOM update for seekbar range slider (Zero React re-renders)
+    // Direct DOM update for seekbar range slider
     if (seekbarRef.current && document.activeElement !== seekbarRef.current) {
       seekbarRef.current.max = dur || 100;
       seekbarRef.current.value = time;
@@ -128,7 +200,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       timeTextRef.current.textContent = `${formatTime(time)} / ${formatTime(dur)}`;
     }
 
-    // Direct DOM update for Subtitles (only triggers DOM mutation when cue text changes)
+    // Direct DOM update for Subtitles
     if (subtitleRef.current && vttCuesRef.current.length > 0) {
       const activeCue = vttCuesRef.current.find((c) => time >= c.start && time <= c.end);
       const newText = activeCue ? activeCue.text : '';
@@ -144,7 +216,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       lastSavedTimeRef.current = time;
       saveProgress({
         media: displayData,
-        episodeInfo: isSeries ? { season: seasonNum, episode: episodeNum } : null,
+        episodeInfo: isSeries ? { season: currentSeason, episode: currentEpisode, title: currentEpTitle } : null,
         currentTime: time,
         duration: dur,
       });
@@ -234,7 +306,6 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           window.screen.orientation.lock('landscape').catch(() => {});
         }
       } else if (videoRef.current?.webkitEnterFullscreen) {
-        // iOS Safari native video fullscreen
         videoRef.current.webkitEnterFullscreen();
       } else {
         setIsBrowserFullscreen(true);
@@ -245,8 +316,6 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     }
     resetControlsTimeout();
   };
-
-
 
   const formatTime = (secs) => {
     if (isNaN(secs) || secs < 0) return '00:00';
@@ -259,7 +328,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  // Sync fullscreen change events (Android Chrome / iOS Safari / Desktop)
+  // Sync fullscreen change events
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isFS = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
@@ -275,7 +344,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     };
   }, []);
 
-  // Disable background page scrolling & touch dragging while video player modal is open
+  // Disable background page scrolling & touch dragging
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     const originalTouchAction = document.body.style.touchAction;
@@ -307,11 +376,13 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       clearTimeout(controlsTimeoutRef.current);
     }
     controlsTimeoutRef.current = setTimeout(() => {
-      setControlsVisible(false);
+      // Don't auto hide if drawer is open
+      if (!isEpisodesDrawerOpen) {
+        setControlsVisible(false);
+      }
     }, delay);
   };
 
-  // Auto-hide navigation controls 2 seconds after stream loads / starts playing
   useEffect(() => {
     if (streamData && !isLoading) {
       resetControlsTimeout(2000);
@@ -319,14 +390,13 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   }, [streamData, isLoading]);
 
   const handlePlayerClick = (e) => {
-    // If click is on interactive elements (button, input, select, link, option), keep controls visible & reset 2s timer
-    const isInteractive = e.target.closest('button, input, select, a, option');
-    if (isInteractive) {
-      resetControlsTimeout(2000);
+    // If click is on drawer or interactive elements, keep controls visible
+    const isInteractive = e.target.closest('button, input, select, a, option, [data-drawer]');
+    if (isInteractive || isEpisodesDrawerOpen) {
+      resetControlsTimeout(4000);
       return;
     }
 
-    // Immediate Netflix-style tap toggle for video navigation
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
@@ -334,17 +404,15 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     setControlsVisible((prev) => {
       const nextState = !prev;
       if (nextState) {
-        // If turning ON controls, auto dismiss after 2s
         controlsTimeoutRef.current = setTimeout(() => {
-          setControlsVisible(false);
+          if (!isEpisodesDrawerOpen) setControlsVisible(false);
         }, 2000);
       }
-      // If turning OFF controls, immediately hides without delay
       return nextState;
     });
   };
 
-  // Keyboard Shortcuts (Space for Play/Pause toggle, Esc for exiting fullscreen)
+  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeTag = document.activeElement?.tagName?.toLowerCase();
@@ -362,23 +430,29 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
         togglePlayPause();
         resetControlsTimeout(2000);
-      } else if (e.key === 'Escape' && isBrowserFullscreen) {
-        setIsBrowserFullscreen(false);
+      } else if (e.key === 'Escape') {
+        if (isEpisodesDrawerOpen) {
+          setIsEpisodesDrawerOpen(false);
+        } else if (isBrowserFullscreen) {
+          setIsBrowserFullscreen(false);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isBrowserFullscreen]);
+  }, [isBrowserFullscreen, isEpisodesDrawerOpen]);
 
-  const fetchStream = async () => {
+  // Fetch Stream Function
+  const fetchStream = useCallback(async (sNum = currentSeason, eNum = currentEpisode) => {
     setIsLoading(true);
     setError(null);
     setStreamData(null);
+    hasAutoResumedRef.current = false;
 
     let res;
     if (isSeries) {
-      res = await getEpisodeStream(displayData.slug, seasonNum, episodeNum);
+      res = await getEpisodeStream(displayData.slug, sNum, eNum);
     } else {
       res = await getMovieStream(displayData.slug);
     }
@@ -402,13 +476,40 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       }
     }
     setIsLoading(false);
-  };
+  }, [displayData?.slug, isSeries, currentSeason, currentEpisode]);
 
   useEffect(() => {
     if (displayData) {
-      fetchStream();
+      fetchStream(currentSeason, currentEpisode);
     }
-  }, [media, episodeInfo]);
+  }, [currentSeason, currentEpisode]);
+
+  // Handle Episode Selection from Drawer
+  const handleSelectEpisode = (seasonNum, epNum, epTitle) => {
+    setCurrentSeason(seasonNum);
+    setCurrentEpisode(epNum);
+    setCurrentEpTitle(epTitle || `Episode ${epNum}`);
+    setIsEpisodesDrawerOpen(false);
+    resetControlsTimeout(2000);
+  };
+
+  // Play Next Episode Helper
+  const playNextEpisode = () => {
+    const nextEp = currentEpisode + 1;
+    setCurrentEpisode(nextEp);
+    setCurrentEpTitle(`Episode ${nextEp}`);
+    resetControlsTimeout(2000);
+  };
+
+  // Helper to extract season numbers
+  const getSeasonNumbers = () => {
+    if (!seriesDetail) return [1];
+    if (Array.isArray(seriesDetail.seasons) && seriesDetail.seasons.length > 0) {
+      return seriesDetail.seasons.map((s) => (typeof s === 'object' ? s.seasonNumber || s.season_number || 1 : s));
+    }
+    const count = seriesDetail.total_seasons || seriesDetail.seasons_count || 1;
+    return Array.from({ length: Math.max(1, count) }, (_, i) => i + 1);
+  };
 
   // Extract nested stream payload
   const payload = streamData?.data || streamData;
@@ -533,7 +634,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     };
   }, [selectedSub]);
 
-  // Keep subtitle cues synced to ref for high-performance direct DOM updates
+  // Keep subtitle cues synced to ref
   useEffect(() => {
     vttCuesRef.current = vttCues;
     if (subtitleRef.current) {
@@ -543,12 +644,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     lastCueTextRef.current = '';
   }, [vttCues]);
 
-  // HLS.js initialization for .m3u8 streams
+  // HLS.js initialization
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !streamUrl || isEmbedIframe) return;
 
-    // Correctly check if URL is an HLS playlist (.m3u8) vs Direct MP4/Video stream
     const isHlsUrl = streamUrl.includes('.m3u8') || streamUrl.includes('/hls/') || rawType === 'm3u8' || rawType === 'hls';
     const isNativeHlsSupported = video.canPlayType('application/vnd.apple.mpegurl');
 
@@ -583,15 +683,12 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.warn('[HLS Network Error] Trying to recover...', data);
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.warn('[HLS Media Error] Trying to recover...', data);
               hls.recoverMediaError();
               break;
             default:
-              console.error('[HLS Unrecoverable Error]', data);
               hls.destroy();
               break;
           }
@@ -607,7 +704,6 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         }
       };
     } else {
-      // Direct MP4 video or Safari Native HLS: Pure 100% GPU hardware decoding without JS overhead
       video.src = streamUrl;
       video.play().catch(() => {});
     }
@@ -618,20 +714,23 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   return (
     <div
       className={`fixed inset-0 z-50 bg-black w-screen h-screen flex flex-col justify-between overflow-hidden select-none touch-none overscroll-none animate-fade-in ${
-        controlsVisible ? 'cursor-default' : 'cursor-none'
+        controlsVisible || isEpisodesDrawerOpen ? 'cursor-default' : 'cursor-none'
       }`}
       onMouseMove={() => resetControlsTimeout(2000)}
       onMouseLeave={() => {
-        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-        setControlsVisible(false);
+        if (!isEpisodesDrawerOpen) {
+          if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+          setControlsVisible(false);
+        }
       }}
       onClick={handlePlayerClick}
     >
       <div className="relative w-full h-full border-0 flex flex-col justify-between overflow-hidden bg-black">
+        
         {/* Netflix Desktop Style Header Bar */}
         <div
           className={`absolute top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between z-40 bg-gradient-to-b from-black/90 via-black/50 to-transparent transition-opacity duration-300 pointer-events-none ${
-            controlsVisible ? 'opacity-100' : 'opacity-0'
+            controlsVisible || isEpisodesDrawerOpen ? 'opacity-100' : 'opacity-0'
           }`}
         >
           <div className="flex items-center gap-3 min-w-0 pointer-events-auto">
@@ -648,13 +747,32 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 {displayData.title}
               </h3>
               <p className="text-[11px] text-gray-300 truncate">
-                {isSeries ? `Season ${seasonNum} • Episode ${episodeNum}` : `Movie • ${displayData.year}`}
+                {isSeries ? `Season ${currentSeason} • ${currentEpTitle}` : `Movie • ${displayData.year}`}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 pointer-events-auto">
-
+            
+            {/* Netflix Episodes & Season Selector Drawer Button (Series Only) */}
+            {isSeries && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEpisodesDrawerOpen(true);
+                  resetControlsTimeout(6000);
+                }}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1.5 backdrop-blur-md active:scale-95 ${
+                  isEpisodesDrawerOpen
+                    ? 'bg-brand-500 text-white border-brand-400 shadow-glow-red'
+                    : 'bg-black/60 hover:bg-white/20 text-white border-white/10'
+                }`}
+                title="Pilih Episode & Season"
+              >
+                <ListVideo className="w-4 h-4 text-brand-400" />
+                <span className="hidden sm:inline text-xs">Episode & Season</span>
+              </button>
+            )}
 
             {/* Subtitle Selector */}
             {subtitlesList.length > 0 && (
@@ -663,7 +781,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 <select
                   value={selectedSub}
                   onChange={(e) => setSelectedSub(e.target.value)}
-                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[100px] sm:max-w-[130px] truncate"
+                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[90px] sm:max-w-[120px] truncate"
                 >
                   <option value="" className="bg-dark-card text-white">(Off)</option>
                   {subtitlesList.map((sub, idx) => (
@@ -695,7 +813,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               title={`Mode Layar Video: ${getZoomLabel()}`}
             >
               <Scaling className="w-4 h-4 text-brand-300" />
-              <span className="text-xs">{getZoomLabel()}</span>
+              <span className="hidden sm:inline text-xs">{getZoomLabel()}</span>
             </button>
 
             <button
@@ -725,7 +843,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           {isLoading ? (
             <div className="flex flex-col items-center justify-center p-8 gap-3 text-gray-400">
               <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
-              <span className="text-sm font-semibold">Memproses dan Ekstraksi Video Stream...</span>
+              <span className="text-sm font-semibold">Memproses Stream Episode S{currentSeason} E{currentEpisode}...</span>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center p-8 gap-4 text-center max-w-md">
@@ -737,7 +855,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 <p className="text-xs text-gray-400">{error}</p>
               </div>
               <button
-                onClick={fetchStream}
+                onClick={() => fetchStream(currentSeason, currentEpisode)}
                 className="px-5 py-2 rounded-full bg-brand-500 text-white font-bold text-xs shadow-glow-red"
               >
                 Coba Lagi
@@ -759,7 +877,6 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               onClick={handlePlayerClick}
               className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden group cursor-pointer"
             >
-              {/* Invisible Click Layer for video frame */}
               <div 
                 onClick={handlePlayerClick}
                 className="absolute inset-0 z-10 cursor-pointer"
@@ -792,7 +909,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                   if (video && video.currentTime > 3 && (video.duration || duration) > 0 && displayData) {
                     saveProgress({
                       media: displayData,
-                      episodeInfo: isSeries ? { season: seasonNum, episode: episodeNum } : null,
+                      episodeInfo: isSeries ? { season: currentSeason, episode: currentEpisode, title: currentEpTitle } : null,
                       currentTime: video.currentTime,
                       duration: video.duration || duration,
                     });
@@ -826,11 +943,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </div>
               )}
 
-              {/* Center Play/Pause & Quick Seek Buttons Overlay (Clean Netflix Style) */}
+              {/* Center Play/Pause & Quick Seek Buttons Overlay */}
               <div
                 onClick={handlePlayerClick}
                 className={`absolute inset-0 flex items-center justify-center gap-6 sm:gap-10 bg-transparent transition-opacity duration-300 z-20 cursor-pointer ${
-                  controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                  controlsVisible && !isEpisodesDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
               >
                 <button
@@ -884,10 +1001,10 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 />
               )}
 
-              {/* Bottom Seekbar & Controls Bar (Netflix Style Gradient Overlay) */}
+              {/* Bottom Seekbar & Controls Bar */}
               <div
                 className={`absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-black/95 via-black/80 to-transparent z-30 transition-opacity duration-300 ${
-                  controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                  controlsVisible && !isEpisodesDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
               >
                 {/* Seekbar Range Slider */}
@@ -905,7 +1022,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                   />
                 </div>
 
-                {/* Controls Row: Play/Pause, Time, Fullscreen Button */}
+                {/* Controls Row */}
                 <div className="flex items-center justify-between text-xs text-white font-bold px-1">
                   <div className="flex items-center gap-3">
                     <button
@@ -915,6 +1032,21 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                     >
                       {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white" />}
                     </button>
+
+                    {/* Next Episode Quick Button for TV Series */}
+                    {isSeries && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playNextEpisode();
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-brand-500 text-gray-200 hover:text-white transition-all text-xs font-semibold backdrop-blur-md active:scale-95"
+                        title="Putar Episode Selanjutnya"
+                      >
+                        <SkipForward className="w-4 h-4 text-brand-400" />
+                        <span className="hidden sm:inline">Ep. Selanjutnya</span>
+                      </button>
+                    )}
 
                     <span ref={timeTextRef} className="text-xs sm:text-sm text-gray-300 font-mono tracking-tight">
                       00:00 / {formatTime(duration)}
@@ -956,6 +1088,144 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
           )}
         </div>
+
+        {/* Netflix-Style Side Drawer for TV Series Episodes & Seasons */}
+        {isSeries && isEpisodesDrawerOpen && (
+          <div 
+            data-drawer="true"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute top-0 right-0 bottom-0 w-full sm:w-[420px] max-w-full bg-dark-base/95 border-l border-dark-border/80 backdrop-blur-xl z-50 p-4 sm:p-6 flex flex-col shadow-2xl animate-fade-in pointer-events-auto"
+          >
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-dark-border/60">
+              <div className="flex items-center gap-2 min-w-0">
+                <Tv className="w-5 h-5 text-brand-500 shrink-0" />
+                <div className="min-w-0">
+                  <h4 className="text-sm font-bold text-white truncate">{displayData.title}</h4>
+                  <p className="text-[11px] text-gray-400 font-medium">Pilih Season & Episode</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsEpisodesDrawerOpen(false)}
+                className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
+                title="Tutup Daftar Episode"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Season Selector Tabs */}
+            <div className="py-4 border-b border-dark-border/40">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold text-gray-300">Pilih Season:</label>
+                <span className="text-[11px] text-brand-400 font-bold">Season {selectedDrawerSeason}</span>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                {getSeasonNumbers().map((sNum) => (
+                  <button
+                    key={sNum}
+                    onClick={() => setSelectedDrawerSeason(sNum)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                      selectedDrawerSeason === sNum
+                        ? 'bg-brand-500 text-white shadow-glow-red border border-brand-400'
+                        : 'bg-dark-card border border-dark-border text-gray-300 hover:text-white hover:bg-dark-hover'
+                    }`}
+                  >
+                    Season {sNum}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Episode List Container */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-2 pr-1 custom-scrollbar">
+              {isLoadingDrawerEpisodes ? (
+                <div className="p-12 text-center text-gray-400 flex flex-col items-center justify-center gap-2">
+                  <Loader2 className="w-7 h-7 text-brand-500 animate-spin" />
+                  <span className="text-xs font-medium">Memuat Daftar Episode Season {selectedDrawerSeason}...</span>
+                </div>
+              ) : drawerEpisodes.length > 0 ? (
+                drawerEpisodes.map((ep, idx) => {
+                  const epNum = ep.episode || ep.episode_number || idx + 1;
+                  const epTitle = ep.title || ep.name || `Episode ${epNum}`;
+                  const isCurrent = currentSeason === selectedDrawerSeason && currentEpisode === epNum;
+
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => handleSelectEpisode(selectedDrawerSeason, epNum, epTitle)}
+                      className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between gap-3 group active:scale-[0.98] ${
+                        isCurrent
+                          ? 'bg-brand-500/20 border-brand-500/80 shadow-glow-red'
+                          : 'bg-dark-card/80 border-dark-border/60 hover:bg-dark-hover hover:border-brand-500/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
+                          isCurrent ? 'bg-brand-500 text-white' : 'bg-dark-base border border-dark-border text-gray-300 group-hover:border-brand-500/50'
+                        }`}>
+                          {epNum}
+                        </div>
+
+                        <div className="min-w-0">
+                          <h5 className={`text-xs font-semibold truncate transition-colors ${
+                            isCurrent ? 'text-brand-400' : 'text-white group-hover:text-brand-400'
+                          }`}>
+                            {epTitle}
+                          </h5>
+                          <span className="text-[10px] text-gray-400">
+                            Season {selectedDrawerSeason} • Ep {epNum}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isCurrent ? (
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-brand-400 px-2 py-0.5 rounded-full bg-brand-500/20 border border-brand-500/40 shrink-0">
+                          <Play className="w-3 h-3 fill-brand-400 animate-pulse" />
+                          <span>Diputar</span>
+                        </div>
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-white/5 group-hover:bg-brand-500 group-hover:text-white text-gray-400 flex items-center justify-center transition-all shrink-0">
+                          <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })
+              ) : (
+                /* Fallback Episode Selector if API only provides number count */
+                <div className="grid grid-cols-2 gap-2">
+                  {Array.from({ length: 24 }, (_, i) => i + 1).map((epNum) => {
+                    const isCurrent = currentSeason === selectedDrawerSeason && currentEpisode === epNum;
+                    return (
+                      <button
+                        key={epNum}
+                        onClick={() => handleSelectEpisode(selectedDrawerSeason, epNum, `Episode ${epNum}`)}
+                        className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
+                          isCurrent
+                            ? 'bg-brand-500/20 border-brand-500 text-white shadow-glow-red'
+                            : 'bg-dark-card border-dark-border text-gray-300 hover:bg-dark-hover hover:text-white'
+                        }`}
+                      >
+                        <span className="text-xs font-bold">Episode {epNum}</span>
+                        {isCurrent && <span className="text-[9px] text-brand-400 font-extrabold uppercase">Diputar</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Drawer Footer */}
+            <div className="pt-3 border-t border-dark-border/40 text-center">
+              <p className="text-[10px] text-gray-400">
+                Pilih episode untuk langsung memutar tanpa keluar dari player.
+              </p>
+            </div>
+
+          </div>
+        )}
+
       </div>
     </div>
   );
