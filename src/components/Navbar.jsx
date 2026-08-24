@@ -95,7 +95,7 @@ export default function Navbar({
 
   return (
     <header className="sticky top-0 z-40 w-full glass-panel border-b border-dark-border/50 transition-all duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Full-width Expanded Mobile Search Bar Overlay */}
         {isMobileSearchOpen ? (
@@ -199,13 +199,13 @@ export default function Navbar({
           </div>
         ) : (
           /* Normal Header Navigation Row */
-          <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
+          <div className="flex items-center justify-between h-16 gap-2 sm:gap-4 w-full">
             
-            {/* Brand Logo */}
-            <div className="flex items-center gap-8 shrink-0">
+            {/* Brand Logo & Left Nav */}
+            <div className="flex items-center gap-3 lg:gap-5 xl:gap-8 shrink-0">
               <button 
                 onClick={() => setActiveTab('home')} 
-                className="flex items-center gap-2 group text-left focus:outline-none"
+                className="flex items-center gap-2 group text-left focus:outline-none shrink-0"
               >
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-brand-700 via-brand-500 to-rose-400 p-0.5 shadow-glow-red group-hover:scale-105 transition-transform">
                   <div className="w-full h-full bg-dark-base rounded-[10px] flex items-center justify-center">
@@ -221,7 +221,7 @@ export default function Navbar({
               </button>
 
               {/* Desktop Navigation */}
-              <nav className="hidden md:flex items-center gap-1">
+              <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -229,16 +229,16 @@ export default function Navbar({
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 xl:px-3 xl:py-2 rounded-lg text-xs xl:text-sm font-medium transition-all shrink-0 ${
                         isActive 
                           ? 'bg-brand-500/15 text-brand-500 border border-brand-500/30 shadow-sm' 
                           : 'text-gray-300 hover:text-white hover:bg-dark-hover/60'
                       }`}
                     >
-                      <Icon className="w-4 h-4" />
+                      <Icon className="w-3.5 h-3.5 xl:w-4 xl:h-4" />
                       <span>{item.label}</span>
                       {item.badge > 0 && (
-                        <span className="ml-1 px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-brand-500 text-white">
+                        <span className="ml-0.5 px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-brand-500 text-white">
                           {item.badge}
                         </span>
                       )}
@@ -249,7 +249,7 @@ export default function Navbar({
             </div>
 
             {/* Right Actions: Search, Filter, Server Status, Profile */}
-            <div className="flex items-center gap-1.5 sm:gap-3 flex-1 justify-end">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 lg:gap-3 shrink-0">
               
               {/* Mobile Quick Search Button */}
               <button
@@ -261,7 +261,7 @@ export default function Navbar({
               </button>
 
               {/* Desktop Search Input Container */}
-              <div className="relative hidden md:block w-64 lg:w-80" ref={searchRef}>
+              <div className="relative hidden md:block w-44 lg:w-56 xl:w-64" ref={searchRef}>
                 <div className="relative flex items-center">
                   <input
                     type="text"
@@ -374,33 +374,36 @@ export default function Navbar({
 
               {/* User Profile / Login Button */}
               {isLoggedIn ? (
-                <div className="flex items-center gap-1.5">
-                  {isFirebaseConfigured() && (
-                    <span 
-                      className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/30"
-                      title="Cloud Sync Aktif (Multi-device)"
-                    >
-                      <Cloud className="w-3 h-3 text-sky-400" />
-                      <span>Cloud</span>
-                    </span>
-                  )}
-                  <button
-                    onClick={() => setActiveTab('profile')}
-                    className={`flex items-center gap-2 p-1 sm:pl-1 sm:pr-3 sm:py-1 rounded-full text-xs font-semibold border transition-all shrink-0 active:scale-95 ${
-                      activeTab === 'profile'
-                        ? 'bg-brand-500/20 text-white border-brand-500 shadow-glow-red'
-                        : 'bg-dark-card/90 text-gray-200 border-dark-border hover:border-brand-500/50'
-                    }`}
-                    title="Profil Saya"
-                  >
+                <button
+                  onClick={() => setActiveTab('profile')}
+                  className={`flex items-center gap-1.5 p-1 sm:pl-1 sm:pr-2.5 sm:py-1 rounded-full text-xs font-semibold border transition-all shrink-0 active:scale-95 ${
+                    activeTab === 'profile'
+                      ? 'bg-brand-500/20 text-white border-brand-500 shadow-glow-red'
+                      : 'bg-dark-card/90 text-gray-200 border-dark-border hover:border-brand-500/50'
+                  }`}
+                  title={isFirebaseConfigured() ? "Profil Saya (Cloud Sync Aktif)" : "Profil Saya"}
+                >
+                  <div className="relative shrink-0">
                     <img
                       src={currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80'}
                       alt={currentUser?.name}
                       className="w-7 h-7 sm:w-6 sm:h-6 rounded-full object-cover border border-brand-500/40"
                     />
-                    <span className="hidden sm:inline max-w-[100px] truncate">{currentUser?.name?.split(' ')[0] || 'Profil'}</span>
-                  </button>
-                </div>
+                    {isFirebaseConfigured() && (
+                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-sky-500 border border-dark-base flex items-center justify-center animate-pulse" title="Cloud Sync Aktif" />
+                    )}
+                  </div>
+                  <span className="hidden sm:inline max-w-[80px] lg:max-w-[100px] truncate">{currentUser?.name?.split(' ')[0] || 'Profil'}</span>
+                  {isFirebaseConfigured() && (
+                    <span 
+                      className="hidden md:flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30 ml-0.5"
+                      title="Cloud Sync Multi-Device Aktif"
+                    >
+                      <Cloud className="w-3 h-3 text-sky-400" />
+                      <span>Cloud</span>
+                    </span>
+                  )}
+                </button>
               ) : (
                 <button
                   onClick={() => setActiveTab('login')}
