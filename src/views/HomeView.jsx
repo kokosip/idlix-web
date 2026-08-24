@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Film, Tv, Trophy, Flame, History, Play, Trash2, Sparkles, Globe } from 'lucide-react';
 import HeroBanner from '../components/HeroBanner';
 import ContentRail from '../components/ContentRail';
-import { useWatchHistory } from '../context/WatchHistoryContext';
+import { useWatchHistory, deduplicateWatchHistory } from '../context/WatchHistoryContext';
 import { 
   getHomeSections, 
   getHomeFlat,
@@ -291,32 +291,36 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
       />
 
       {/* Continue Watching (Lanjutkan Menonton) Rail */}
-      {watchHistory.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-brand-500/20 text-brand-400 border border-brand-500/30">
-                <History className="w-5 h-5" />
+      {(() => {
+        const uniqueHistory = deduplicateWatchHistory(watchHistory);
+        if (uniqueHistory.length === 0) return null;
+
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-brand-500/20 text-brand-400 border border-brand-500/30">
+                  <History className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                    Lanjutkan Menonton
+                  </h2>
+                </div>
               </div>
-              <div>
-                <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
-                  Lanjutkan Menonton
-                </h2>
-              </div>
+
+              <button
+                onClick={clearHistory}
+                className="text-xs text-gray-400 hover:text-rose-400 transition-colors flex items-center gap-1 px-2 py-1 rounded bg-white/5 hover:bg-white/10"
+                title="Hapus semua riwayat menonton"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Bersihkan</span>
+              </button>
             </div>
 
-            <button
-              onClick={clearHistory}
-              className="text-xs text-gray-400 hover:text-rose-400 transition-colors flex items-center gap-1 px-2 py-1 rounded bg-white/5 hover:bg-white/10"
-              title="Hapus semua riwayat menonton"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Bersihkan</span>
-            </button>
-          </div>
-
-          <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-3 pt-1 -mx-4 px-4 sm:mx-0 sm:px-0">
-            {watchHistory.map((item) => {
+            <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-3 pt-1 -mx-4 px-4 sm:mx-0 sm:px-0">
+              {uniqueHistory.map((item) => {
               const mediaObj = {
                 slug: item.mediaSlug,
                 title: item.title,
@@ -395,7 +399,8 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
             })}
           </div>
         </div>
-      )}
+      );
+    })()}
 
       {/* Streaming Network Originals Section */}
       {networks.length > 0 && (

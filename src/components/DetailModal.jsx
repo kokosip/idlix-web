@@ -113,6 +113,12 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
     setIsLoadingSeason(false);
   };
 
+  if (!media) return null;
+
+  const displayData = detail || normalizeMediaItem(media);
+  const isBookmarked = isInWatchlist(displayData.slug);
+  const seasonsList = getSeasonNumbers(displayData);
+
   const handleSeasonChange = (seasonNum) => {
     setSelectedSeason(seasonNum);
     if (displayData) {
@@ -120,11 +126,34 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
     }
   };
 
-  if (!media) return null;
+  const getPlayEpisodeTarget = () => {
+    if (displayData.type !== 'series') return null;
 
-  const displayData = detail || normalizeMediaItem(media);
-  const isBookmarked = isInWatchlist(displayData.slug);
-  const seasonsList = getSeasonNumbers(displayData);
+    const saved = getMediaProgress(displayData.slug);
+    if (saved && saved.season && saved.episode) {
+      // If completed (percent >= 95), play the NEXT episode automatically
+      if (saved.completed || (saved.percent && saved.percent >= 95)) {
+        const nextEp = saved.episode + 1;
+        return {
+          season: saved.season,
+          episode: nextEp,
+          title: `Episode ${nextEp}`
+        };
+      }
+      // Otherwise resume current episode
+      return {
+        season: saved.season,
+        episode: saved.episode,
+        title: saved.episodeTitle || `Episode ${saved.episode}`
+      };
+    }
+
+    return {
+      season: selectedSeason || 1,
+      episode: 1,
+      title: 'Episode 1'
+    };
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 md:p-10 overflow-y-auto bg-black/80 backdrop-blur-md animate-fade-in">
@@ -214,12 +243,12 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
               <div className="hidden sm:flex items-center gap-3 w-full sm:w-auto">
                 <button
                   onClick={() => {
-                    onPlayStream(displayData, displayData.type === 'series' ? { season: selectedSeason, episode: 1 } : null);
+                    onPlayStream(displayData, getPlayEpisodeTarget());
                   }}
                   className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-brand-500 hover:bg-brand-600 text-white font-extrabold text-xs sm:text-sm shadow-glow-red transition-all"
                 >
                   <Play className="w-4 h-4 fill-white" />
-                  <span>{displayData.type === 'series' ? 'Putar Episode 1' : 'Tonton Film'}</span>
+                  <span>Putar</span>
                 </button>
                 <button
                   onClick={() => toggleWatchlist(displayData)}
@@ -378,7 +407,7 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
                   </div>
                 ) : (
                   <div className="py-6 text-center text-xs text-gray-400 bg-dark-card/50 rounded-xl border border-dashed border-dark-border">
-                    Belum ada daftar episode khusus yang dimuat untuk Season {selectedSeason}. Klik "Putar Episode 1" untuk memutar stream secara langsung.
+                    Belum ada daftar episode khusus yang dimuat untuk Season {selectedSeason}. Klik "Putar" untuk memutar stream secara langsung.
                   </div>
                 )}
               </div>
@@ -392,12 +421,12 @@ export default function DetailModal({ media, onClose, onPlayStream }) {
         <div className="sm:hidden p-3 bg-dark-base/95 backdrop-blur-xl border-t border-dark-border/80 z-40 flex items-center gap-3 shrink-0">
           <button
             onClick={() => {
-              onPlayStream(displayData, displayData.type === 'series' ? { season: selectedSeason, episode: 1 } : null);
+              onPlayStream(displayData, getPlayEpisodeTarget());
             }}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-full bg-brand-500 hover:bg-brand-600 text-white font-extrabold text-xs shadow-glow-red active:scale-95 transition-all"
           >
             <Play className="w-4 h-4 fill-white" />
-            <span>{displayData.type === 'series' ? 'Putar Ep. 1' : 'Tonton Film'}</span>
+            <span>Putar</span>
           </button>
           <button
             onClick={() => toggleWatchlist(displayData)}

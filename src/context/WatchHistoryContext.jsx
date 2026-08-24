@@ -8,16 +8,49 @@ import {
 
 const WatchHistoryContext = createContext();
 
+/**
+ * Deduplicate watch history entries by mediaSlug.
+ * For each media title, retains ONLY the single entry with the most recent lastUpdated timestamp.
+ */
+export const deduplicateWatchHistory = (historyList) => {
+  if (!Array.isArray(historyList)) return [];
+
+  const map = new Map();
+  historyList.forEach((item) => {
+    if (!item) return;
+    const groupKey = item.mediaSlug || item.key;
+    const existing = map.get(groupKey);
+
+    if (!existing) {
+      map.set(groupKey, item);
+    } else {
+      const existingTime = new Date(existing.lastUpdated || 0).getTime();
+      const newTime = new Date(item.lastUpdated || 0).getTime();
+      if (newTime > existingTime) {
+        map.set(groupKey, item);
+      }
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    const timeA = new Date(a.lastUpdated || 0).getTime();
+    const timeB = new Date(b.lastUpdated || 0).getTime();
+    return timeB - timeA;
+  });
+};
+
 export const WatchHistoryProvider = ({ children }) => {
   const { currentUser } = useAuth();
   const username = currentUser?.username || 'guest';
   const storageKey = `IDLIX_WATCH_HISTORY_${username.toLowerCase()}`;
 
-  // Helper to read history from localStorage
+  // Helper to read history from localStorage & deduplicate per media title
   const loadLocalHistory = useCallback(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return deduplicateWatchHistory(parsed);
     } catch (e) {
       console.error('[WatchHistory] Failed to load local watch history:', e);
       return [];
@@ -41,37 +74,13 @@ export const WatchHistoryProvider = ({ children }) => {
         setIsSyncing(false);
 
         if (Array.isArray(cloudData)) {
-          // Merge local and cloud history based on item key & latest lastUpdated timestamp
-          const itemMap = new Map();
-
-          // Helper to register or resolve newest item
-          const processItem = (item) => {
-            if (!item || !item.key) return;
-            const existing = itemMap.get(item.key);
-            if (!existing) {
-              itemMap.set(item.key, item);
-            } else {
-              const existingTime = new Date(existing.lastUpdated || 0).getTime();
-              const newTime = new Date(item.lastUpdated || 0).getTime();
-              if (newTime > existingTime) {
-                itemMap.set(item.key, item);
-              }
-            }
-          };
-
-          cloudData.forEach(processItem);
-          localData.forEach(processItem);
-
-          // Sort by lastUpdated descending (newest first)
-          const mergedList = Array.from(itemMap.values()).sort((a, b) => {
-            const timeA = new Date(a.lastUpdated || 0).getTime();
-            const timeB = new Date(b.lastUpdated || 0).getTime();
-            return timeB - timeA;
-          });
+          // Deduplicate and merge local and cloud data by media title
+          const combined = [...cloudData, ...localData];
+          const mergedList = deduplicateWatchHistory(combined);
 
           setWatchHistory(mergedList);
 
-          // Save back merged history to local storage & cloud
+          // Save back deduplicated history to local storage & cloud
           try {
             localStorage.setItem(storageKey, JSON.stringify(mergedList));
           } catch (err) {
@@ -89,15 +98,16 @@ export const WatchHistoryProvider = ({ children }) => {
 
   // Persist to localStorage & Cloud whenever history updates
   const persistHistory = useCallback((newHistory) => {
-    setWatchHistory(newHistory);
+    const deduplicated = deduplicateWatchHistory(newHistory);
+    setWatchHistory(deduplicated);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(newHistory));
+      localStorage.setItem(storageKey, JSON.stringify(deduplicated));
     } catch (e) {
       console.error('[WatchHistory] Failed to save watch history locally:', e);
     }
 
     if (currentUser && isFirebaseConfigured()) {
-      saveHistoryToCloud(username, newHistory);
+      saveHistoryToCloud(username, deduplicated);
     }
   }, [username, currentUser, storageKey]);
 
@@ -114,7 +124,8 @@ export const WatchHistoryProvider = ({ children }) => {
   };
 
   /**
-   * Save or update playback progress
+   * Save or update playback progress per media title.
+   * Replaces any existing entry for the same media.slug with the latest watched episode.
    */
   const saveProgress = useCallback(
     ({ media, episodeInfo, currentTime, duration }) => {
@@ -151,7 +162,10 @@ export const WatchHistoryProvider = ({ children }) => {
       };
 
       setWatchHistory((prev) => {
-        const filtered = prev.filter((item) => item.key !== key);
+        // Filter out any previous entries matching either exact key OR mediaSlug (so 1 title = 1 entry)
+        const filtered = prev.filter(
+          (item) => item.key !== key && item.mediaSlug !== media.slug
+        );
         const updated = [newItem, ...filtered];
         
         // Save to localStorage
@@ -178,14 +192,26 @@ export const WatchHistoryProvider = ({ children }) => {
   const getSavedProgress = useCallback(
     (slug, season, episode) => {
       if (!slug) return null;
-      const key = getStorageItemKey(slug, season, episode);
-      return watchHistory.find((item) => item.key === key) || null;
+      const specificKey = getStorageItemKey(slug, season, episode);
+      
+      // 1. Try exact match by key
+      const exact = watchHistory.find((item) => item.key === specificKey);
+      if (exact) return exact;
+
+      // 2. Try match by mediaSlug & season/episode
+      const matched = watchHistory.find(
+        (item) => 
+          item.mediaSlug === slug && 
+          (season !== undefined ? item.season === season : true) &&
+          (episode !== undefined ? item.episode === episode : true)
+      );
+      return matched || null;
     },
     [watchHistory]
   );
 
   /**
-   * Get overall media progress (for series, return most recent episode progress)
+   * Get overall media progress (returns most recent episode progress for series)
    */
   const getMediaProgress = useCallback(
     (slug) => {
@@ -196,11 +222,13 @@ export const WatchHistoryProvider = ({ children }) => {
   );
 
   /**
-   * Remove specific item from history
+   * Remove specific media item from history (by key or mediaSlug)
    */
   const removeFromHistory = useCallback(
-    (key) => {
-      const updated = watchHistory.filter((item) => item.key !== key);
+    (keyOrSlug) => {
+      const updated = watchHistory.filter(
+        (item) => item.key !== keyOrSlug && item.mediaSlug !== keyOrSlug
+      );
       persistHistory(updated);
     },
     [watchHistory, persistHistory]
