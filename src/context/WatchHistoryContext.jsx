@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { 
+  getHistoryFromCloud, 
+  saveHistoryToCloud, 
+  isFirebaseConfigured 
+} from '../services/firebase';
 
 const WatchHistoryContext = createContext();
 
@@ -9,32 +14,92 @@ export const WatchHistoryProvider = ({ children }) => {
   const storageKey = `IDLIX_WATCH_HISTORY_${username.toLowerCase()}`;
 
   // Helper to read history from localStorage
-  const loadHistory = useCallback(() => {
+  const loadLocalHistory = useCallback(() => {
     try {
       const saved = localStorage.getItem(storageKey);
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
-      console.error('Failed to load watch history:', e);
+      console.error('[WatchHistory] Failed to load local watch history:', e);
       return [];
     }
   }, [storageKey]);
 
-  const [watchHistory, setWatchHistory] = useState(loadHistory);
+  const [watchHistory, setWatchHistory] = useState(loadLocalHistory);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Sync state whenever active user changes
   useEffect(() => {
-    setWatchHistory(loadHistory());
-  }, [username, loadHistory]);
+    let isMounted = true;
+    const localData = loadLocalHistory();
+    setWatchHistory(localData);
 
-  // Persist to localStorage whenever watchHistory state updates
-  const persistHistory = (newHistory) => {
+    // If logged in and Firebase configured, fetch Cloud History & Merge
+    if (currentUser && isFirebaseConfigured()) {
+      setIsSyncing(true);
+      getHistoryFromCloud(username).then((cloudData) => {
+        if (!isMounted) return;
+        setIsSyncing(false);
+
+        if (Array.isArray(cloudData)) {
+          // Merge local and cloud history based on item key & latest lastUpdated timestamp
+          const itemMap = new Map();
+
+          // Helper to register or resolve newest item
+          const processItem = (item) => {
+            if (!item || !item.key) return;
+            const existing = itemMap.get(item.key);
+            if (!existing) {
+              itemMap.set(item.key, item);
+            } else {
+              const existingTime = new Date(existing.lastUpdated || 0).getTime();
+              const newTime = new Date(item.lastUpdated || 0).getTime();
+              if (newTime > existingTime) {
+                itemMap.set(item.key, item);
+              }
+            }
+          };
+
+          cloudData.forEach(processItem);
+          localData.forEach(processItem);
+
+          // Sort by lastUpdated descending (newest first)
+          const mergedList = Array.from(itemMap.values()).sort((a, b) => {
+            const timeA = new Date(a.lastUpdated || 0).getTime();
+            const timeB = new Date(b.lastUpdated || 0).getTime();
+            return timeB - timeA;
+          });
+
+          setWatchHistory(mergedList);
+
+          // Save back merged history to local storage & cloud
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(mergedList));
+          } catch (err) {
+            console.error('[WatchHistory] Failed to save merged history to localStorage:', err);
+          }
+          saveHistoryToCloud(username, mergedList);
+        }
+      });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [username, currentUser, loadLocalHistory, storageKey]);
+
+  // Persist to localStorage & Cloud whenever history updates
+  const persistHistory = useCallback((newHistory) => {
     setWatchHistory(newHistory);
     try {
       localStorage.setItem(storageKey, JSON.stringify(newHistory));
     } catch (e) {
-      console.error('Failed to save watch history:', e);
+      console.error('[WatchHistory] Failed to save watch history locally:', e);
     }
-  };
+
+    if (currentUser && isFirebaseConfigured()) {
+      saveHistoryToCloud(username, newHistory);
+    }
+  }, [username, currentUser, storageKey]);
 
   /**
    * Create unique storage key for media item
@@ -88,15 +153,23 @@ export const WatchHistoryProvider = ({ children }) => {
       setWatchHistory((prev) => {
         const filtered = prev.filter((item) => item.key !== key);
         const updated = [newItem, ...filtered];
+        
+        // Save to localStorage
         try {
           localStorage.setItem(storageKey, JSON.stringify(updated));
         } catch (e) {
-          console.error('Failed to persist watch progress:', e);
+          console.error('[WatchHistory] Failed to persist watch progress locally:', e);
         }
+
+        // Save to Cloud Firestore if user logged in
+        if (currentUser && isFirebaseConfigured()) {
+          saveHistoryToCloud(username, updated);
+        }
+
         return updated;
       });
     },
-    [storageKey]
+    [username, currentUser, storageKey]
   );
 
   /**
@@ -130,7 +203,7 @@ export const WatchHistoryProvider = ({ children }) => {
       const updated = watchHistory.filter((item) => item.key !== key);
       persistHistory(updated);
     },
-    [watchHistory, storageKey]
+    [watchHistory, persistHistory]
   );
 
   /**
@@ -138,12 +211,13 @@ export const WatchHistoryProvider = ({ children }) => {
    */
   const clearHistory = useCallback(() => {
     persistHistory([]);
-  }, [storageKey]);
+  }, [persistHistory]);
 
   return (
     <WatchHistoryContext.Provider
       value={{
         watchHistory,
+        isSyncing,
         saveProgress,
         getSavedProgress,
         getMediaProgress,

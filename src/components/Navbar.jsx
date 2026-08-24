@@ -14,11 +14,13 @@ import {
   User,
   LogIn,
   ArrowLeft,
-  Sparkles
+  Sparkles,
+  Cloud
 } from 'lucide-react';
 import { searchContent, normalizeMediaItem } from '../services/api';
 import { useWatchlist } from '../context/WatchlistContext';
 import { useAuth } from '../context/AuthContext';
+import { isFirebaseConfigured } from '../services/firebase';
 
 export default function Navbar({ 
   activeTab, 
@@ -372,22 +374,33 @@ export default function Navbar({
 
               {/* User Profile / Login Button */}
               {isLoggedIn ? (
-                <button
-                  onClick={() => setActiveTab('profile')}
-                  className={`flex items-center gap-2 p-1 sm:pl-1 sm:pr-3 sm:py-1 rounded-full text-xs font-semibold border transition-all shrink-0 active:scale-95 ${
-                    activeTab === 'profile'
-                      ? 'bg-brand-500/20 text-white border-brand-500 shadow-glow-red'
-                      : 'bg-dark-card/90 text-gray-200 border-dark-border hover:border-brand-500/50'
-                  }`}
-                  title="Profil Saya"
-                >
-                  <img
-                    src={currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80'}
-                    alt={currentUser?.name}
-                    className="w-7 h-7 sm:w-6 sm:h-6 rounded-full object-cover border border-brand-500/40"
-                  />
-                  <span className="hidden sm:inline max-w-[100px] truncate">{currentUser?.name?.split(' ')[0] || 'Profil'}</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {isFirebaseConfigured() && (
+                    <span 
+                      className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/30"
+                      title="Cloud Sync Aktif (Multi-device)"
+                    >
+                      <Cloud className="w-3 h-3 text-sky-400" />
+                      <span>Cloud</span>
+                    </span>
+                  )}
+                  <button
+                    onClick={() => setActiveTab('profile')}
+                    className={`flex items-center gap-2 p-1 sm:pl-1 sm:pr-3 sm:py-1 rounded-full text-xs font-semibold border transition-all shrink-0 active:scale-95 ${
+                      activeTab === 'profile'
+                        ? 'bg-brand-500/20 text-white border-brand-500 shadow-glow-red'
+                        : 'bg-dark-card/90 text-gray-200 border-dark-border hover:border-brand-500/50'
+                    }`}
+                    title="Profil Saya"
+                  >
+                    <img
+                      src={currentUser?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80'}
+                      alt={currentUser?.name}
+                      className="w-7 h-7 sm:w-6 sm:h-6 rounded-full object-cover border border-brand-500/40"
+                    />
+                    <span className="hidden sm:inline max-w-[100px] truncate">{currentUser?.name?.split(' ')[0] || 'Profil'}</span>
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => setActiveTab('login')}
