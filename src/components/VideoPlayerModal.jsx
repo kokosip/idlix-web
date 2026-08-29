@@ -21,7 +21,12 @@ import {
   SkipForward,
   ChevronDown,
   Tv,
-  CheckCircle2
+  CheckCircle2,
+  SlidersHorizontal,
+  Type,
+  Minus,
+  Plus,
+  Settings
 } from 'lucide-react';
 import Hls from 'hls.js';
 import { 
@@ -34,6 +39,29 @@ import {
 } from '../services/api';
 import { useWatchHistory } from '../context/WatchHistoryContext';
 
+const SUB_SIZE_PRESETS = [
+  { label: 'Normal (100%)', value: 100, desc: 'Layar HP / Tablet' },
+  { label: 'Sedang (125%)', value: 125, desc: 'Laptop Standar' },
+  { label: 'Besar (150%)', value: 150, desc: 'Monitor 20-22"' },
+  { label: 'Sangat Besar (175%)', value: 175, desc: 'Monitor 22-24"' },
+  { label: '22" Monitor / TV (200%)', value: 200, desc: 'Monitor Besar (Rekomendasi)' },
+  { label: 'Jumbo (250%)', value: 250, desc: 'Nonton Jarak Jauh' },
+  { label: 'Maksimal (300%)', value: 300, desc: 'Ekstra Besar' },
+];
+
+const SUB_COLOR_OPTIONS = [
+  { label: 'Putih', value: '#ffffff', hexClass: 'bg-white', textClass: 'text-white' },
+  { label: 'Kuning', value: '#fde047', hexClass: 'bg-yellow-300', textClass: 'text-yellow-300' },
+  { label: 'Cyan', value: '#67e8f9', hexClass: 'bg-cyan-300', textClass: 'text-cyan-300' },
+  { label: 'Hijau', value: '#86efac', hexClass: 'bg-green-300', textClass: 'text-green-300' },
+];
+
+const SUB_BG_OPTIONS = [
+  { id: 'none', label: 'Outline Saja' },
+  { id: 'semi', label: 'Semi Transparan' },
+  { id: 'solid', label: 'Hitam Pekat' },
+];
+
 export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [streamData, setStreamData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,6 +71,78 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [copied, setCopied] = useState(false);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
   const [zoomMode, setZoomMode] = useState('contain'); // 'contain' (Original Fit), 'cover' (Zoom Fit / Crop Fill), 'fill' (Stretch)
+
+  // Subtitle Customization State (Persisted in localStorage)
+  const [subSize, setSubSize] = useState(() => {
+    try {
+      const saved = localStorage.getItem('idlix_sub_size');
+      return saved ? parseInt(saved, 10) : 150; // Default 150% for comfortable viewing
+    } catch {
+      return 150;
+    }
+  });
+
+  const [subColor, setSubColor] = useState(() => {
+    try {
+      return localStorage.getItem('idlix_sub_color') || '#ffffff';
+    } catch {
+      return '#ffffff';
+    }
+  });
+
+  const [subBg, setSubBg] = useState(() => {
+    try {
+      return localStorage.getItem('idlix_sub_bg') || 'none';
+    } catch {
+      return 'none';
+    }
+  });
+
+  const [subPosition, setSubPosition] = useState(() => {
+    try {
+      return localStorage.getItem('idlix_sub_position') || 'normal';
+    } catch {
+      return 'normal';
+    }
+  });
+
+  const [isSubSettingsOpen, setIsSubSettingsOpen] = useState(false);
+
+  const updateSubSize = (val) => {
+    const clamped = Math.max(70, Math.min(300, Math.round(val)));
+    setSubSize(clamped);
+    try {
+      localStorage.setItem('idlix_sub_size', clamped.toString());
+    } catch {}
+  };
+
+  const updateSubColor = (color) => {
+    setSubColor(color);
+    try {
+      localStorage.setItem('idlix_sub_color', color);
+    } catch {}
+  };
+
+  const updateSubBg = (bg) => {
+    setSubBg(bg);
+    try {
+      localStorage.setItem('idlix_sub_bg', bg);
+    } catch {}
+  };
+
+  const updateSubPosition = (pos) => {
+    setSubPosition(pos);
+    try {
+      localStorage.setItem('idlix_sub_position', pos);
+    } catch {}
+  };
+
+  const resetSubSettings = () => {
+    updateSubSize(150);
+    updateSubColor('#ffffff');
+    updateSubBg('none');
+    updateSubPosition('normal');
+  };
 
   // Series Season & Episode State
   const [currentSeason, setCurrentSeason] = useState(episodeInfo?.season || 1);
@@ -376,8 +476,8 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       clearTimeout(controlsTimeoutRef.current);
     }
     controlsTimeoutRef.current = setTimeout(() => {
-      // Don't auto hide if drawer is open
-      if (!isEpisodesDrawerOpen) {
+      // Don't auto hide if drawer or subtitle settings is open
+      if (!isEpisodesDrawerOpen && !isSubSettingsOpen) {
         setControlsVisible(false);
       }
     }, delay);
@@ -390,9 +490,9 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   }, [streamData, isLoading]);
 
   const handlePlayerClick = (e) => {
-    // If click is on drawer or interactive elements, keep controls visible
-    const isInteractive = e.target.closest('button, input, select, a, option, [data-drawer]');
-    if (isInteractive || isEpisodesDrawerOpen) {
+    // If click is on drawer, subtitle settings, or interactive elements, keep controls visible
+    const isInteractive = e.target.closest('button, input, select, a, option, [data-drawer], [data-sub-modal]');
+    if (isInteractive || isEpisodesDrawerOpen || isSubSettingsOpen) {
       resetControlsTimeout(4000);
       return;
     }
@@ -405,7 +505,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       const nextState = !prev;
       if (nextState) {
         controlsTimeoutRef.current = setTimeout(() => {
-          if (!isEpisodesDrawerOpen) setControlsVisible(false);
+          if (!isEpisodesDrawerOpen && !isSubSettingsOpen) setControlsVisible(false);
         }, 2000);
       }
       return nextState;
@@ -431,7 +531,9 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         togglePlayPause();
         resetControlsTimeout(2000);
       } else if (e.key === 'Escape') {
-        if (isEpisodesDrawerOpen) {
+        if (isSubSettingsOpen) {
+          setIsSubSettingsOpen(false);
+        } else if (isEpisodesDrawerOpen) {
           setIsEpisodesDrawerOpen(false);
         } else if (isBrowserFullscreen) {
           setIsBrowserFullscreen(false);
@@ -441,7 +543,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isBrowserFullscreen, isEpisodesDrawerOpen]);
+  }, [isBrowserFullscreen, isEpisodesDrawerOpen, isSubSettingsOpen]);
 
   // Fetch Stream Function
   const fetchStream = useCallback(async (sNum = currentSeason, eNum = currentEpisode) => {
@@ -714,11 +816,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   return (
     <div
       className={`fixed inset-0 z-50 bg-black w-screen h-screen flex flex-col justify-between overflow-hidden select-none touch-none overscroll-none animate-fade-in ${
-        controlsVisible || isEpisodesDrawerOpen ? 'cursor-default' : 'cursor-none'
+        controlsVisible || isEpisodesDrawerOpen || isSubSettingsOpen ? 'cursor-default' : 'cursor-none'
       }`}
       onMouseMove={() => resetControlsTimeout(2000)}
       onMouseLeave={() => {
-        if (!isEpisodesDrawerOpen) {
+        if (!isEpisodesDrawerOpen && !isSubSettingsOpen) {
           if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
           setControlsVisible(false);
         }
@@ -730,7 +832,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         {/* Netflix Desktop Style Header Bar */}
         <div
           className={`absolute top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between z-40 bg-gradient-to-b from-black/90 via-black/50 to-transparent transition-opacity duration-300 pointer-events-none ${
-            controlsVisible || isEpisodesDrawerOpen ? 'opacity-100' : 'opacity-0'
+            controlsVisible || isEpisodesDrawerOpen || isSubSettingsOpen ? 'opacity-100' : 'opacity-0'
           }`}
         >
           <div className="flex items-center gap-3 min-w-0 pointer-events-auto">
@@ -752,7 +854,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 pointer-events-auto">
+          <div className="flex items-center gap-2 pointer-events-auto flex-wrap justify-end">
             
             {/* Netflix Episodes & Season Selector Drawer Button (Series Only) */}
             {isSeries && (
@@ -760,6 +862,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsEpisodesDrawerOpen(true);
+                  setIsSubSettingsOpen(false);
                   resetControlsTimeout(6000);
                 }}
                 className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1.5 backdrop-blur-md active:scale-95 ${
@@ -774,22 +877,69 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               </button>
             )}
 
-            {/* Subtitle Selector */}
+            {/* Subtitle Selector & Quick Size Controls */}
             {subtitlesList.length > 0 && (
-              <div className="flex items-center gap-1 bg-black/60 border border-white/10 px-2.5 py-1.5 rounded-lg backdrop-blur-md">
-                <span className="text-xs text-gray-300 font-medium hidden sm:inline">Sub:</span>
-                <select
-                  value={selectedSub}
-                  onChange={(e) => setSelectedSub(e.target.value)}
-                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[90px] sm:max-w-[120px] truncate"
-                >
-                  <option value="" className="bg-dark-card text-white">(Off)</option>
-                  {subtitlesList.map((sub, idx) => (
-                    <option key={idx} value={sub.file || sub.url || sub.src} className="bg-dark-card text-white">
-                      {sub.label || sub.language || `Sub ${idx + 1}`}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex items-center gap-1 bg-black/60 border border-white/10 p-1 rounded-lg backdrop-blur-md">
+                <div className="flex items-center gap-1 px-1.5 py-0.5">
+                  <span className="text-xs text-gray-300 font-medium hidden sm:inline">Sub:</span>
+                  <select
+                    value={selectedSub}
+                    onChange={(e) => setSelectedSub(e.target.value)}
+                    className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[85px] sm:max-w-[110px] truncate"
+                  >
+                    <option value="" className="bg-dark-card text-white">(Off)</option>
+                    {subtitlesList.map((sub, idx) => (
+                      <option key={idx} value={sub.file || sub.url || sub.src} className="bg-dark-card text-white">
+                        {sub.label || sub.language || `Sub ${idx + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Subtitle Size Selector & Settings Trigger (Active when Subtitle is selected) */}
+                {selectedSub && (
+                  <>
+                    <div className="w-[1px] h-4 bg-white/20 hidden md:block" />
+
+                    {/* Quick Subtitle Size Dropdown */}
+                    <div className="hidden md:flex items-center gap-1 px-1">
+                      <span className="text-[11px] text-gray-400 font-medium">Ukuran:</span>
+                      <select
+                        value={subSize}
+                        onChange={(e) => updateSubSize(parseInt(e.target.value, 10))}
+                        className="bg-transparent text-brand-300 text-xs font-bold focus:outline-none cursor-pointer"
+                        title="Pilih ukuran font subtitle"
+                      >
+                        <option value="100" className="bg-dark-card text-white">100% (Normal)</option>
+                        <option value="125" className="bg-dark-card text-white">125% (Sedang)</option>
+                        <option value="150" className="bg-dark-card text-white">150% (Besar)</option>
+                        <option value="175" className="bg-dark-card text-white">175% (Sangat Besar)</option>
+                        <option value="200" className="bg-dark-card text-white">200% (Monitor 22")</option>
+                        <option value="250" className="bg-dark-card text-white">250% (Jumbo)</option>
+                        <option value="300" className="bg-dark-card text-white">300% (Maksimal)</option>
+                      </select>
+                    </div>
+
+                    {/* Subtitle Customizer Popover Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsSubSettingsOpen((prev) => !prev);
+                        setIsEpisodesDrawerOpen(false);
+                        resetControlsTimeout(8000);
+                      }}
+                      className={`px-2 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95 ${
+                        isSubSettingsOpen
+                          ? 'bg-brand-500 text-white shadow-glow-red'
+                          : 'hover:bg-white/20 text-gray-300 hover:text-white'
+                      }`}
+                      title="Atur Tampilan Subtitle (Ukuran, Warna, Background)"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-brand-400" />
+                      <span className="text-[11px] font-bold text-white hidden sm:inline">{subSize}%</span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
 
@@ -994,9 +1144,29 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               {!isEmbedIframe && (
                 <div
                   ref={subtitleRef}
-                  style={{ display: 'none', whitespace: 'pre-line' }}
-                  className={`absolute left-1/2 -translate-x-1/2 max-w-[92%] sm:max-w-2xl px-2 py-1 text-white text-xs sm:text-base md:text-lg font-medium text-center z-20 pointer-events-none transition-all duration-200 [text-shadow:_0_2px_6px_rgba(0,0,0,0.95),_0_0_3px_rgba(0,0,0,0.9)] leading-snug ${
-                    controlsVisible ? 'bottom-16 sm:bottom-20' : 'bottom-3 sm:bottom-6'
+                  style={{
+                    display: 'none',
+                    whiteSpace: 'pre-line',
+                    fontSize: `clamp(${Math.round(13 * (subSize / 100))}px, ${(0.95 * (subSize / 100)).toFixed(2)}vw + ${Math.round(8 * (subSize / 100))}px, ${Math.round(28 * (subSize / 100))}px)`,
+                    lineHeight: 1.35,
+                    color: subColor,
+                    backgroundColor:
+                      subBg === 'solid'
+                        ? 'rgba(0, 0, 0, 0.92)'
+                        : subBg === 'semi'
+                        ? 'rgba(0, 0, 0, 0.65)'
+                        : 'transparent',
+                    borderRadius: subBg !== 'none' ? '0.5rem' : '0',
+                    padding: subBg !== 'none' ? '0.35rem 0.85rem' : '0.2rem 0.5rem',
+                  }}
+                  className={`absolute left-1/2 -translate-x-1/2 max-w-[95%] sm:max-w-4xl lg:max-w-6xl font-semibold text-center z-20 pointer-events-none transition-all duration-150 [text-shadow:_0_2px_8px_rgba(0,0,0,0.98),_0_0_4px_rgba(0,0,0,0.95)] ${
+                    subPosition === 'raised'
+                      ? controlsVisible
+                        ? 'bottom-24 sm:bottom-32'
+                        : 'bottom-10 sm:bottom-16'
+                      : controlsVisible
+                      ? 'bottom-16 sm:bottom-20'
+                      : 'bottom-3 sm:bottom-6'
                   }`}
                 />
               )}
@@ -1004,7 +1174,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               {/* Bottom Seekbar & Controls Bar */}
               <div
                 className={`absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-black/95 via-black/80 to-transparent z-30 transition-opacity duration-300 ${
-                  controlsVisible && !isEpisodesDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                  controlsVisible && !isEpisodesDrawerOpen && !isSubSettingsOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
               >
                 {/* Seekbar Range Slider */}
@@ -1221,6 +1391,246 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               <p className="text-[10px] text-gray-400">
                 Pilih episode untuk langsung memutar tanpa keluar dari player.
               </p>
+            </div>
+
+          </div>
+        )}
+
+        {/* Subtitle Appearance Settings Drawer / Modal */}
+        {isSubSettingsOpen && (
+          <div 
+            data-sub-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute top-0 right-0 bottom-0 w-full sm:w-[420px] max-w-full bg-dark-base/95 border-l border-dark-border/80 backdrop-blur-xl z-50 p-4 sm:p-6 flex flex-col shadow-2xl animate-fade-in pointer-events-auto"
+          >
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-dark-border/60">
+              <div className="flex items-center gap-2 min-w-0">
+                <SlidersHorizontal className="w-5 h-5 text-brand-500 shrink-0" />
+                <div className="min-w-0">
+                  <h4 className="text-sm font-bold text-white truncate">Pengaturan Subtitle</h4>
+                  <p className="text-[11px] text-gray-400 font-medium">Sesuaikan ukuran font, warna & latar belakang</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSubSettingsOpen(false)}
+                className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
+                title="Tutup Pengaturan Subtitle"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Settings Content */}
+            <div className="flex-1 overflow-y-auto py-4 space-y-5 pr-1 custom-scrollbar">
+
+              {/* 1. Realtime Live Subtitle Preview Card */}
+              <div>
+                <label className="text-xs font-semibold text-gray-300 mb-2 block flex items-center justify-between">
+                  <span>Pratinjau Langsung (Preview):</span>
+                  <span className="text-[10px] text-brand-400 font-bold font-mono">{subSize}% Scale</span>
+                </label>
+                <div className="relative w-full h-28 sm:h-32 rounded-xl bg-gradient-to-b from-slate-900 via-zinc-900 to-black border border-dark-border/80 flex items-center justify-center p-3 overflow-hidden shadow-inner">
+                  {/* Subtle video background grid pattern */}
+                  <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293715_1px,transparent_1px),linear-gradient(to_bottom,#1f293715_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none" />
+                  
+                  <div
+                    style={{
+                      fontSize: `clamp(${Math.round(11 * (subSize / 100))}px, ${(0.8 * (subSize / 100)).toFixed(2)}vw + ${Math.round(7 * (subSize / 100))}px, ${Math.round(24 * (subSize / 100))}px)`,
+                      lineHeight: 1.3,
+                      color: subColor,
+                      backgroundColor:
+                        subBg === 'solid'
+                          ? 'rgba(0, 0, 0, 0.92)'
+                          : subBg === 'semi'
+                          ? 'rgba(0, 0, 0, 0.65)'
+                          : 'transparent',
+                      borderRadius: subBg !== 'none' ? '0.375rem' : '0',
+                      padding: subBg !== 'none' ? '0.25rem 0.6rem' : '0.15rem 0.35rem',
+                    }}
+                    className="relative text-center font-semibold [text-shadow:_0_2px_8px_rgba(0,0,0,1),_0_0_4px_rgba(0,0,0,0.95)] max-w-[90%] transition-all duration-150"
+                  >
+                    Ini adalah contoh tampilan subtitle IDLIX.
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Subtitle Size Adjustment (Slider + Stepper) */}
+              <div className="space-y-3 p-3.5 rounded-xl bg-dark-card/60 border border-dark-border/60">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Type className="w-4 h-4 text-brand-400" />
+                    <label className="text-xs font-bold text-white">Ukuran Subtitle (Font Size)</label>
+                  </div>
+                  <span className="text-xs font-extrabold text-brand-400 bg-brand-500/20 px-2 py-0.5 rounded-md border border-brand-500/30 font-mono">
+                    {subSize}%
+                  </span>
+                </div>
+
+                {/* Slider with - and + Stepper Buttons */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => updateSubSize(subSize - 10)}
+                    disabled={subSize <= 70}
+                    className="p-2 rounded-lg bg-dark-base border border-dark-border text-gray-300 hover:text-white hover:border-brand-500/50 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    title="Kecilkan Font (-10%)"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+
+                  <input
+                    type="range"
+                    min={70}
+                    max={300}
+                    step={5}
+                    value={subSize}
+                    onChange={(e) => updateSubSize(parseInt(e.target.value, 10))}
+                    className="flex-1 h-2 bg-gray-700 accent-brand-500 rounded-lg cursor-pointer transition-all hover:h-2.5"
+                  />
+
+                  <button
+                    onClick={() => updateSubSize(subSize + 10)}
+                    disabled={subSize >= 300}
+                    className="p-2 rounded-lg bg-dark-base border border-dark-border text-gray-300 hover:text-white hover:border-brand-500/50 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    title="Besarkan Font (+10%)"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Quick Presets Grid */}
+                <div>
+                  <span className="text-[11px] text-gray-400 font-medium mb-1.5 block">Pilihan Ukuran Cepat:</span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {SUB_SIZE_PRESETS.map((preset) => {
+                      const isSelected = subSize === preset.value;
+                      const isMonitorHighlight = preset.value === 200;
+                      return (
+                        <button
+                          key={preset.value}
+                          onClick={() => updateSubSize(preset.value)}
+                          className={`p-2 rounded-lg border text-left transition-all flex flex-col gap-0.5 active:scale-95 ${
+                            isSelected
+                              ? 'bg-brand-500 text-white border-brand-400 shadow-glow-red'
+                              : isMonitorHighlight
+                              ? 'bg-brand-500/10 border-brand-500/40 text-brand-300 hover:bg-brand-500/20'
+                              : 'bg-dark-base/80 border-dark-border/80 text-gray-300 hover:bg-dark-hover hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-bold">{preset.label}</span>
+                            {isSelected && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <span className={`text-[9px] truncate ${isSelected ? 'text-white/80' : 'text-gray-400'}`}>
+                            {preset.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Subtitle Font Color Options */}
+              <div className="space-y-2.5 p-3.5 rounded-xl bg-dark-card/60 border border-dark-border/60">
+                <label className="text-xs font-bold text-white block">Warna Teks Subtitle</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {SUB_COLOR_OPTIONS.map((c) => {
+                    const isSelected = subColor === c.value;
+                    return (
+                      <button
+                        key={c.value}
+                        onClick={() => updateSubColor(c.value)}
+                        className={`p-2 rounded-lg border flex items-center justify-between gap-2 transition-all active:scale-95 ${
+                          isSelected
+                            ? 'bg-white/10 border-brand-400 ring-1 ring-brand-400'
+                            : 'bg-dark-base/80 border-dark-border/80 hover:bg-dark-hover'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`w-3.5 h-3.5 rounded-full ${c.hexClass} shadow-sm shrink-0`} />
+                          <span className={`text-xs font-bold truncate ${c.textClass}`}>{c.label}</span>
+                        </div>
+                        {isSelected && <Check className="w-3 h-3 text-brand-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. Subtitle Background Style */}
+              <div className="space-y-2.5 p-3.5 rounded-xl bg-dark-card/60 border border-dark-border/60">
+                <label className="text-xs font-bold text-white block">Gaya Latar Belakang (Background)</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {SUB_BG_OPTIONS.map((bgOpt) => {
+                    const isSelected = subBg === bgOpt.id;
+                    return (
+                      <button
+                        key={bgOpt.id}
+                        onClick={() => updateSubBg(bgOpt.id)}
+                        className={`p-2 rounded-lg border text-center text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 active:scale-95 ${
+                          isSelected
+                            ? 'bg-brand-500 text-white border-brand-400 shadow-glow-red'
+                            : 'bg-dark-base/80 border-dark-border/80 text-gray-300 hover:bg-dark-hover hover:text-white'
+                        }`}
+                      >
+                        <span>{bgOpt.label}</span>
+                        {isSelected && <Check className="w-3 h-3 text-white" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 5. Vertical Position Offset */}
+              <div className="space-y-2.5 p-3.5 rounded-xl bg-dark-card/60 border border-dark-border/60">
+                <label className="text-xs font-bold text-white block">Posisi Vertikal</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => updateSubPosition('normal')}
+                    className={`p-2.5 rounded-lg border text-xs font-bold transition-all flex items-center justify-between active:scale-95 ${
+                      subPosition === 'normal'
+                        ? 'bg-brand-500 text-white border-brand-400 shadow-glow-red'
+                        : 'bg-dark-base/80 border-dark-border/80 text-gray-300 hover:bg-dark-hover hover:text-white'
+                    }`}
+                  >
+                    <span>Standar (Bawah)</span>
+                    {subPosition === 'normal' && <Check className="w-3.5 h-3.5 text-white" />}
+                  </button>
+
+                  <button
+                    onClick={() => updateSubPosition('raised')}
+                    className={`p-2.5 rounded-lg border text-xs font-bold transition-all flex items-center justify-between active:scale-95 ${
+                      subPosition === 'raised'
+                        ? 'bg-brand-500 text-white border-brand-400 shadow-glow-red'
+                        : 'bg-dark-base/80 border-dark-border/80 text-gray-300 hover:bg-dark-hover hover:text-white'
+                    }`}
+                  >
+                    <span>Sedikit Naik</span>
+                    {subPosition === 'raised' && <Check className="w-3.5 h-3.5 text-white" />}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Drawer Footer Actions */}
+            <div className="pt-4 border-t border-dark-border/60 flex items-center justify-between gap-3">
+              <button
+                onClick={resetSubSettings}
+                className="px-3 py-2 rounded-lg bg-dark-card border border-dark-border text-gray-300 hover:text-white hover:bg-dark-hover text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95"
+                title="Kembalikan ke pengaturan awal"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset</span>
+              </button>
+
+              <button
+                onClick={() => setIsSubSettingsOpen(false)}
+                className="flex-1 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 active:scale-95 text-white font-bold text-xs shadow-glow-red transition-all text-center"
+              >
+                Selesai & Simpan
+              </button>
             </div>
 
           </div>
