@@ -52,25 +52,74 @@ const getInitialSeedUsers = () => {
       }
     }
 
-    // 2. Cek VITE_USER_1_USERNAME & VITE_USER_1_PASSWORD (format variabel terpisah)
+    // 2. Cek VITE_USER_1 s/d VITE_USER_5 secara statis (Vite butuh referensi statis untuk build time replacement)
+    const envUsers = [];
     if (import.meta.env.VITE_USER_1_USERNAME && import.meta.env.VITE_USER_1_PASSWORD) {
-      const envUsers = [];
-      let i = 1;
-      while (import.meta.env[`VITE_USER_${i}_USERNAME`]) {
-        envUsers.push({
-          id: `usr_vps_${i}`,
-          username: import.meta.env[`VITE_USER_${i}_USERNAME`],
-          password: import.meta.env[`VITE_USER_${i}_PASSWORD`],
-          name: import.meta.env[`VITE_USER_${i}_NAME`] || import.meta.env[`VITE_USER_${i}_USERNAME`],
-          avatar: import.meta.env[`VITE_USER_${i}_AVATAR`] || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80',
-          bio: 'Akun Pengguna VPS',
-          joinedAt: '2026-01-01',
-          role: 'Standard User'
-        });
-        i++;
-      }
-      if (envUsers.length > 0) return envUsers;
+      envUsers.push({
+        id: 'usr_vps_1',
+        username: import.meta.env.VITE_USER_1_USERNAME,
+        password: import.meta.env.VITE_USER_1_PASSWORD,
+        name: import.meta.env.VITE_USER_1_NAME || import.meta.env.VITE_USER_1_USERNAME,
+        avatar: import.meta.env.VITE_USER_1_AVATAR || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80',
+        bio: 'Akun Pengguna VPS',
+        joinedAt: '2026-01-01',
+        role: 'Standard User'
+      });
     }
+
+    if (import.meta.env.VITE_USER_2_USERNAME && import.meta.env.VITE_USER_2_PASSWORD) {
+      envUsers.push({
+        id: 'usr_vps_2',
+        username: import.meta.env.VITE_USER_2_USERNAME,
+        password: import.meta.env.VITE_USER_2_PASSWORD,
+        name: import.meta.env.VITE_USER_2_NAME || import.meta.env.VITE_USER_2_USERNAME,
+        avatar: import.meta.env.VITE_USER_2_AVATAR || 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&q=80',
+        bio: 'Akun Pengguna VPS',
+        joinedAt: '2026-01-01',
+        role: 'Standard User'
+      });
+    }
+
+    if (import.meta.env.VITE_USER_3_USERNAME && import.meta.env.VITE_USER_3_PASSWORD) {
+      envUsers.push({
+        id: 'usr_vps_3',
+        username: import.meta.env.VITE_USER_3_USERNAME,
+        password: import.meta.env.VITE_USER_3_PASSWORD,
+        name: import.meta.env.VITE_USER_3_NAME || import.meta.env.VITE_USER_3_USERNAME,
+        avatar: import.meta.env.VITE_USER_3_AVATAR || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80',
+        bio: 'Akun Pengguna VPS',
+        joinedAt: '2026-01-01',
+        role: 'Standard User'
+      });
+    }
+
+    if (import.meta.env.VITE_USER_4_USERNAME && import.meta.env.VITE_USER_4_PASSWORD) {
+      envUsers.push({
+        id: 'usr_vps_4',
+        username: import.meta.env.VITE_USER_4_USERNAME,
+        password: import.meta.env.VITE_USER_4_PASSWORD,
+        name: import.meta.env.VITE_USER_4_NAME || import.meta.env.VITE_USER_4_USERNAME,
+        avatar: import.meta.env.VITE_USER_4_AVATAR || 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&q=80',
+        bio: 'Akun Pengguna VPS',
+        joinedAt: '2026-01-01',
+        role: 'Standard User'
+      });
+    }
+
+    if (import.meta.env.VITE_USER_5_USERNAME && import.meta.env.VITE_USER_5_PASSWORD) {
+      envUsers.push({
+        id: 'usr_vps_5',
+        username: import.meta.env.VITE_USER_5_USERNAME,
+        password: import.meta.env.VITE_USER_5_PASSWORD,
+        name: import.meta.env.VITE_USER_5_NAME || import.meta.env.VITE_USER_5_USERNAME,
+        avatar: import.meta.env.VITE_USER_5_AVATAR || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&q=80',
+        bio: 'Akun Pengguna VPS',
+        joinedAt: '2026-01-01',
+        role: 'Standard User'
+      });
+    }
+
+    if (envUsers.length > 0) return envUsers;
   } catch (err) {
     console.error('Gagal membaca pengguna dari .env:', err);
   }

@@ -26,7 +26,14 @@ import {
   Type,
   Minus,
   Plus,
-  Settings
+  Settings,
+  Upload,
+  FileText,
+  Trash2,
+  Clock,
+  Timer,
+  FastForward,
+  Rewind
 } from 'lucide-react';
 import Hls from 'hls.js';
 import { 
@@ -62,6 +69,13 @@ const SUB_BG_OPTIONS = [
   { id: 'solid', label: 'Hitam Pekat' },
 ];
 
+const getSubStorageKey = (slug, isSeries, season, episode) => {
+  if (!slug) return null;
+  return isSeries
+    ? `idlix_custom_sub_series_${slug}_s${season}_e${episode}`
+    : `idlix_custom_sub_movie_${slug}`;
+};
+
 export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [streamData, setStreamData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,6 +85,18 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const [copied, setCopied] = useState(false);
   const [isBrowserFullscreen, setIsBrowserFullscreen] = useState(false);
   const [zoomMode, setZoomMode] = useState('contain'); // 'contain' (Original Fit), 'cover' (Zoom Fit / Crop Fill), 'fill' (Stretch)
+
+  // Custom Subtitle Upload & Toast State
+  const [customSub, setCustomSub] = useState(null);
+  const [subToast, setSubToast] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const showSubToast = (message, type = 'success') => {
+    setSubToast({ message, type });
+    setTimeout(() => {
+      setSubToast(null);
+    }, 4500);
+  };
 
   // Subtitle Customization State (Persisted in localStorage)
   const [subSize, setSubSize] = useState(() => {
@@ -106,6 +132,10 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     }
   });
 
+  // Subtitle Sync Offset State (in seconds, + = appear earlier / percepat, - = appear later / perlambat)
+  const [subOffset, setSubOffset] = useState(0);
+  const subOffsetRef = useRef(0);
+
   const [isSubSettingsOpen, setIsSubSettingsOpen] = useState(false);
 
   const updateSubSize = (val) => {
@@ -137,11 +167,46 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     } catch {}
   };
 
+  const updateSubOffset = (val, showNotification = false) => {
+    const rounded = Math.max(-60, Math.min(60, Math.round(val * 100) / 100));
+    setSubOffset(rounded);
+    subOffsetRef.current = rounded;
+
+    const storageKey = getSubStorageKey(displayData?.slug, isSeries, currentSeason, currentEpisode);
+    if (storageKey) {
+      try {
+        if (rounded === 0) {
+          localStorage.removeItem(`${storageKey}_offset`);
+        } else {
+          localStorage.setItem(`${storageKey}_offset`, rounded.toString());
+        }
+      } catch {}
+    }
+
+    // Force instant DOM subtitle refresh with new offset
+    const video = videoRef.current;
+    if (video && subtitleRef.current && vttCuesRef.current.length > 0) {
+      const adjustedTime = video.currentTime + rounded;
+      const activeCue = vttCuesRef.current.find((c) => adjustedTime >= c.start && adjustedTime <= c.end);
+      const newText = activeCue ? activeCue.text : '';
+      lastCueTextRef.current = newText;
+      subtitleRef.current.innerHTML = newText ? newText.replace(/\n/g, '<br>') : '';
+      subtitleRef.current.style.display = newText ? 'block' : 'none';
+    }
+
+    if (showNotification) {
+      const sign = rounded > 0 ? `+${rounded.toFixed(1)}s` : `${rounded.toFixed(1)}s`;
+      const desc = rounded > 0 ? '(Muncul Lebih Awal)' : rounded < 0 ? '(Muncul Lebih Lambat)' : '(Tepat Waktu)';
+      showSubToast(`Sync Subtitle: ${sign} ${desc}`, 'info');
+    }
+  };
+
   const resetSubSettings = () => {
     updateSubSize(150);
     updateSubColor('#ffffff');
     updateSubBg('none');
     updateSubPosition('normal');
+    updateSubOffset(0);
   };
 
   // Series Season & Episode State
@@ -300,13 +365,14 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       timeTextRef.current.textContent = `${formatTime(time)} / ${formatTime(dur)}`;
     }
 
-    // Direct DOM update for Subtitles
+    // Direct DOM update for Subtitles (with Sync Offset)
     if (subtitleRef.current && vttCuesRef.current.length > 0) {
-      const activeCue = vttCuesRef.current.find((c) => time >= c.start && time <= c.end);
+      const adjustedTime = time + (subOffsetRef.current || 0);
+      const activeCue = vttCuesRef.current.find((c) => adjustedTime >= c.start && adjustedTime <= c.end);
       const newText = activeCue ? activeCue.text : '';
       if (newText !== lastCueTextRef.current) {
         lastCueTextRef.current = newText;
-        subtitleRef.current.innerHTML = newText.replace(/\n/g, '<br>');
+        subtitleRef.current.innerHTML = newText ? newText.replace(/\n/g, '<br>') : '';
         subtitleRef.current.style.display = newText ? 'block' : 'none';
       }
     }
@@ -530,6 +596,16 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
         togglePlayPause();
         resetControlsTimeout(2000);
+      } else if (e.key === 'BracketLeft' || e.key === '[') {
+        // Perlambat subtitle (-0.1 detik)
+        e.preventDefault();
+        updateSubOffset(subOffsetRef.current - 0.1, true);
+        resetControlsTimeout(2500);
+      } else if (e.key === 'BracketRight' || e.key === ']') {
+        // Percepat subtitle (+0.1 detik)
+        e.preventDefault();
+        updateSubOffset(subOffsetRef.current + 0.1, true);
+        resetControlsTimeout(2500);
       } else if (e.key === 'Escape') {
         if (isSubSettingsOpen) {
           setIsSubSettingsOpen(false);
@@ -544,6 +620,35 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isBrowserFullscreen, isEpisodesDrawerOpen, isSubSettingsOpen]);
+
+  // Load custom subtitle & sync offset for this specific movie or series episode
+  useEffect(() => {
+    if (!displayData?.slug) return;
+    const storageKey = getSubStorageKey(displayData.slug, isSeries, currentSeason, currentEpisode);
+    if (!storageKey) return;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setCustomSub(parsed);
+        setSelectedSub((prev) => (prev === 'custom' || !prev ? 'custom' : prev));
+      } else {
+        setCustomSub(null);
+        setSelectedSub((prev) => (prev === 'custom' ? '' : prev));
+      }
+
+      // Load saved sync offset for this specific video
+      const savedOffset = localStorage.getItem(`${storageKey}_offset`);
+      const parsedOffset = savedOffset ? parseFloat(savedOffset) : 0;
+      setSubOffset(isNaN(parsedOffset) ? 0 : parsedOffset);
+      subOffsetRef.current = isNaN(parsedOffset) ? 0 : parsedOffset;
+    } catch (e) {
+      console.error('Failed to load custom sub/offset from localStorage', e);
+      setCustomSub(null);
+      setSubOffset(0);
+      subOffsetRef.current = 0;
+    }
+  }, [displayData?.slug, isSeries, currentSeason, currentEpisode]);
 
   // Fetch Stream Function
   const fetchStream = useCallback(async (sNum = currentSeason, eNum = currentEpisode) => {
@@ -564,8 +669,13 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       const payload = rawData.data || rawData.result || rawData.stream || rawData;
       setStreamData(payload);
 
+      const storageKey = getSubStorageKey(displayData.slug, isSeries, sNum, eNum);
+      const existingCustom = storageKey ? localStorage.getItem(storageKey) : null;
       const subs = payload.subtitles || payload.vtt_tracks || payload.tracks || payload.captions || [];
-      if (subs.length > 0) {
+
+      if (existingCustom) {
+        setSelectedSub('custom');
+      } else if (subs.length > 0) {
         setSelectedSub(subs[0].file || subs[0].url || subs[0].src || '');
       }
     } else {
@@ -642,23 +752,108 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
   const isEmbedIframe = playerMode === 'iframe' ? true : playerMode === 'hls' ? false : detectedIsIframe;
   const subtitlesList = payload?.subtitles || payload?.vtt_tracks || payload?.tracks || payload?.captions || [];
 
-  // Subtitle Blob Loader & VTT Cue Parser
+  // Custom Subtitle Handlers
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileName = file.name;
+    const isSrtOrVtt = fileName.toLowerCase().endsWith('.srt') || 
+                       fileName.toLowerCase().endsWith('.vtt') || 
+                       file.type.includes('subrip') || 
+                       file.type.includes('vtt') || 
+                       file.type.includes('text');
+
+    if (!isSrtOrVtt) {
+      showSubToast('Format file harus berupa .srt atau .vtt', 'error');
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result;
+      if (typeof content !== 'string' || !content.trim()) {
+        showSubToast('File subtitle kosong atau tidak dapat dibaca.', 'error');
+        return;
+      }
+
+      if (!content.includes('-->')) {
+        showSubToast('Format subtitle tidak valid (tidak ditemukan timestamp -->).', 'error');
+        return;
+      }
+
+      const storageKey = getSubStorageKey(displayData?.slug, isSeries, currentSeason, currentEpisode);
+      const subObj = {
+        name: fileName,
+        content: content,
+        size: file.size,
+        updatedAt: Date.now(),
+      };
+
+      try {
+        if (storageKey) {
+          localStorage.setItem(storageKey, JSON.stringify(subObj));
+        }
+        setCustomSub(subObj);
+        setSelectedSub('custom');
+        showSubToast(`Subtitle "${fileName}" berhasil diunggah & disimpan!`, 'success');
+      } catch (err) {
+        console.error('Failed to save subtitle to localStorage:', err);
+        setCustomSub(subObj);
+        setSelectedSub('custom');
+        showSubToast(`Subtitle aktif (Penyimpanan lokal browser penuh).`, 'warning');
+      }
+
+      if (e.target) e.target.value = '';
+    };
+
+    reader.onerror = () => {
+      showSubToast('Gagal membaca file subtitle.', 'error');
+      if (e.target) e.target.value = '';
+    };
+
+    reader.readAsText(file);
+  };
+
+  const handleDeleteCustomSub = () => {
+    const storageKey = getSubStorageKey(displayData?.slug, isSeries, currentSeason, currentEpisode);
+    if (storageKey) {
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {}
+    }
+    setCustomSub(null);
+    if (selectedSub === 'custom') {
+      if (subtitlesList.length > 0) {
+        setSelectedSub(subtitlesList[0].file || subtitlesList[0].url || subtitlesList[0].src || '');
+      } else {
+        setSelectedSub('');
+      }
+    }
+    showSubToast('Subtitle custom telah dihapus dari video ini.', 'success');
+  };
+
+  // Subtitle Blob Loader & SRT/VTT Cue Parser
   const [subBlobUrl, setSubBlobUrl] = useState('');
   const [vttCues, setVttCues] = useState([]);
 
-  const parseVttCues = (vttText) => {
-    if (!vttText) return [];
-    const lines = vttText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const parseSubtitleText = (rawText) => {
+    if (!rawText) return [];
+    const lines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const cues = [];
     let currentCue = null;
 
     const timeToSec = (tStr) => {
       if (!tStr) return 0;
-      const parts = tStr.trim().split(':');
+      const clean = tStr.trim().replace(',', '.');
+      const parts = clean.split(':');
       if (parts.length === 3) {
-        return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2].replace(',', '.'));
+        return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
       } else if (parts.length === 2) {
-        return parseFloat(parts[0]) * 60 + parseFloat(parts[1].replace(',', '.'));
+        return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+      } else if (parts.length === 1) {
+        return parseFloat(parts[0]) || 0;
       }
       return 0;
     };
@@ -667,12 +862,13 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
       const line = lines[i].trim();
       if (line.includes('-->')) {
         const [startStr, endStr] = line.split('-->');
+        const cleanEndStr = (endStr || '').trim().split(/\s+/)[0];
         currentCue = {
           start: timeToSec(startStr),
-          end: timeToSec(endStr),
+          end: timeToSec(cleanEndStr),
           text: '',
         };
-      } else if (currentCue && line !== '' && !line.startsWith('WEBVTT') && !/^\d+$/.test(line)) {
+      } else if (currentCue && line !== '' && !line.startsWith('WEBVTT') && !line.startsWith('NOTE') && !/^\d+$/.test(line)) {
         currentCue.text = currentCue.text ? `${currentCue.text}\n${line}` : line;
       } else if (line === '' && currentCue) {
         if (currentCue.text) cues.push(currentCue);
@@ -693,6 +889,37 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     let isMounted = true;
     let createdUrl = '';
 
+    if (selectedSub === 'custom') {
+      if (customSub && customSub.content) {
+        const parsed = parseSubtitleText(customSub.content);
+        if (isMounted) {
+          setVttCues(parsed);
+        }
+
+        let vttText = customSub.content;
+        if (!vttText.trim().startsWith('WEBVTT')) {
+          vttText = 'WEBVTT\n\n' + vttText.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+        }
+        const blob = new Blob([vttText], { type: 'text/vtt' });
+        createdUrl = URL.createObjectURL(blob);
+        if (isMounted) {
+          setSubBlobUrl(createdUrl);
+        }
+      } else {
+        if (isMounted) {
+          setVttCues([]);
+          setSubBlobUrl('');
+        }
+      }
+
+      return () => {
+        isMounted = false;
+        if (createdUrl && createdUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(createdUrl);
+        }
+      };
+    }
+
     const fetchAndCreateBlob = async () => {
       try {
         const fullUrl = selectedSub.startsWith('http')
@@ -702,7 +929,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         const response = await fetch(fullUrl);
         if (response.ok) {
           let text = await response.text();
-          const parsed = parseVttCues(text);
+          const parsed = parseSubtitleText(text);
           if (isMounted) {
             setVttCues(parsed);
           }
@@ -734,7 +961,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
         URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [selectedSub]);
+  }, [selectedSub, customSub]);
 
   // Keep subtitle cues synced to ref
   useEffect(() => {
@@ -877,24 +1104,59 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
               </button>
             )}
 
-            {/* Subtitle Selector & Quick Size Controls */}
-            {subtitlesList.length > 0 && (
+            {/* Hidden Subtitle File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".srt,.vtt,text/plain"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
+            {/* Subtitle Selector, Custom Upload & Quick Size Controls */}
+            {(!isEmbedIframe || subtitlesList.length > 0 || customSub) && (
               <div className="flex items-center gap-1 bg-black/60 border border-white/10 p-1 rounded-lg backdrop-blur-md">
                 <div className="flex items-center gap-1 px-1.5 py-0.5">
                   <span className="text-xs text-gray-300 font-medium hidden sm:inline">Sub:</span>
                   <select
                     value={selectedSub}
-                    onChange={(e) => setSelectedSub(e.target.value)}
-                    className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[85px] sm:max-w-[110px] truncate"
+                    onChange={(e) => {
+                      if (e.target.value === '__upload__') {
+                        if (fileInputRef.current) fileInputRef.current.click();
+                      } else {
+                        setSelectedSub(e.target.value);
+                      }
+                    }}
+                    className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer max-w-[95px] sm:max-w-[130px] truncate"
                   >
                     <option value="" className="bg-dark-card text-white">(Off)</option>
+                    {customSub && (
+                      <option value="custom" className="bg-dark-card text-brand-400 font-bold">
+                        📁 [Custom] {customSub.name}
+                      </option>
+                    )}
                     {subtitlesList.map((sub, idx) => (
                       <option key={idx} value={sub.file || sub.url || sub.src} className="bg-dark-card text-white">
                         {sub.label || sub.language || `Sub ${idx + 1}`}
                       </option>
                     ))}
+                    <option value="__upload__" className="bg-dark-card text-emerald-400 font-semibold">
+                      + Upload .srt / .vtt...
+                    </option>
                   </select>
                 </div>
+
+                {/* Quick Upload Button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (fileInputRef.current) fileInputRef.current.click();
+                  }}
+                  className="p-1 rounded hover:bg-white/20 text-gray-300 hover:text-white transition-colors"
+                  title="Upload Subtitle Custom (.srt / .vtt)"
+                >
+                  <Upload className="w-3.5 h-3.5 text-brand-400" />
+                </button>
 
                 {/* Subtitle Size Selector & Settings Trigger (Active when Subtitle is selected) */}
                 {selectedSub && (
@@ -933,7 +1195,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                           ? 'bg-brand-500 text-white shadow-glow-red'
                           : 'hover:bg-white/20 text-gray-300 hover:text-white'
                       }`}
-                      title="Atur Tampilan Subtitle (Ukuran, Warna, Background)"
+                      title="Atur Tampilan Subtitle (Ukuran, Warna, Background, Custom SRT)"
                     >
                       <SlidersHorizontal className="w-3.5 h-3.5 text-brand-400" />
                       <span className="text-[11px] font-bold text-white hidden sm:inline">{subSize}%</span>
@@ -1090,6 +1352,28 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                   >
                     Mulai dari Awal
                   </button>
+                </div>
+              )}
+
+              {/* Subtitle Action Toast Notification */}
+              {subToast && (
+                <div className={`absolute top-20 right-6 z-40 px-4 py-2.5 rounded-full text-xs font-bold flex items-center gap-2 backdrop-blur-md shadow-2xl animate-fade-in border pointer-events-auto ${
+                  subToast.type === 'error'
+                    ? 'bg-rose-950/90 text-rose-200 border-rose-500/50'
+                    : subToast.type === 'warning'
+                    ? 'bg-amber-950/90 text-amber-200 border-amber-500/50'
+                    : subToast.type === 'info'
+                    ? 'bg-sky-950/90 text-sky-200 border-sky-500/50'
+                    : 'bg-emerald-950/90 text-emerald-200 border-emerald-500/50'
+                }`}>
+                  {subToast.type === 'error' ? (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  ) : subToast.type === 'info' ? (
+                    <Clock className="w-4 h-4 text-sky-400 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  )}
+                  <span>{subToast.message}</span>
                 </div>
               )}
 
@@ -1424,7 +1708,92 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             {/* Scrollable Settings Content */}
             <div className="flex-1 overflow-y-auto py-4 space-y-5 pr-1 custom-scrollbar">
 
-              {/* 1. Realtime Live Subtitle Preview Card */}
+              {/* 1. Custom Subtitle (.SRT / .VTT) LocalStorage Management Card */}
+              <div className="space-y-3 p-3.5 rounded-xl bg-dark-card/80 border border-brand-500/30 shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-brand-400" />
+                    <label className="text-xs font-bold text-white">Custom Subtitle (.SRT / .VTT)</label>
+                  </div>
+                  <span className="text-[10px] text-gray-400 bg-dark-base px-2 py-0.5 rounded border border-dark-border">
+                    LocalStorage
+                  </span>
+                </div>
+
+                {customSub ? (
+                  <div className="p-3 rounded-lg bg-dark-base/90 border border-brand-500/40 flex flex-col gap-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-2 rounded-lg bg-brand-500/20 text-brand-400 shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate" title={customSub.name}>
+                            {customSub.name}
+                          </p>
+                          <p className="text-[10px] text-gray-400">
+                            {customSub.size ? `${(customSub.size / 1024).toFixed(1)} KB • ` : ''}
+                            Tersimpan untuk video ini
+                          </p>
+                        </div>
+                      </div>
+
+                      {selectedSub === 'custom' ? (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold shrink-0">
+                          Aktif
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedSub('custom')}
+                          className="px-2.5 py-1 rounded-lg bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-[11px] font-bold shrink-0 transition-all shadow-glow-red"
+                        >
+                          Gunakan
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1 border-t border-dark-border/40">
+                      <button
+                        onClick={() => {
+                          if (fileInputRef.current) fileInputRef.current.click();
+                        }}
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-xs font-semibold text-gray-200 hover:text-white flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-brand-400" />
+                        <span>Ganti File (.srt)</span>
+                      </button>
+
+                      <button
+                        onClick={handleDeleteCustomSub}
+                        className="py-1.5 px-2.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-xs font-semibold text-rose-400 hover:text-rose-300 flex items-center justify-center gap-1 transition-all active:scale-95"
+                        title="Hapus subtitle custom ini"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Hapus</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => {
+                      if (fileInputRef.current) fileInputRef.current.click();
+                    }}
+                    className="border-2 border-dashed border-dark-border hover:border-brand-500/60 rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all bg-dark-base/40 hover:bg-dark-base/80 group"
+                  >
+                    <div className="p-2.5 rounded-full bg-white/5 group-hover:bg-brand-500/20 text-gray-400 group-hover:text-brand-400 transition-colors mb-2">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <p className="text-xs font-bold text-white group-hover:text-brand-300 transition-colors">
+                      Klik untuk Upload Subtitle (.srt / .vtt)
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      Subtitle akan tersimpan khusus untuk video/episode ini.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Realtime Live Subtitle Preview Card */}
               <div>
                 <label className="text-xs font-semibold text-gray-300 mb-2 block flex items-center justify-between">
                   <span>Pratinjau Langsung (Preview):</span>
@@ -1455,7 +1824,115 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </div>
               </div>
 
-              {/* 2. Subtitle Size Adjustment (Slider + Stepper) */}
+              {/* 3. Subtitle Sync & Delay Offset Adjustment */}
+              <div className="space-y-3 p-3.5 rounded-xl bg-dark-card/80 border border-sky-500/30 shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-sky-400" />
+                    <label className="text-xs font-bold text-white">Sinkronisasi / Delay Subtitle</label>
+                  </div>
+                  <span className={`text-xs font-mono font-extrabold px-2 py-0.5 rounded-md border ${
+                    subOffset > 0
+                      ? 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30'
+                      : subOffset < 0
+                      ? 'text-amber-400 bg-amber-500/20 border-amber-500/30'
+                      : 'text-gray-300 bg-dark-base border-dark-border'
+                  }`}>
+                    {subOffset > 0 ? `+${subOffset.toFixed(2)}s` : `${subOffset.toFixed(2)}s`}
+                  </span>
+                </div>
+
+                {/* Status Indicator Label */}
+                <div className="text-[11px] flex items-center justify-between px-1">
+                  <span className="text-gray-400">Status Waktu:</span>
+                  <span className={`font-semibold ${
+                    subOffset > 0 ? 'text-emerald-400' : subOffset < 0 ? 'text-amber-400' : 'text-gray-300'
+                  }`}>
+                    {subOffset > 0
+                      ? `Dipercepat +${subOffset.toFixed(2)}s (Muncul Lebih Awal)`
+                      : subOffset < 0
+                      ? `Diperlambat ${subOffset.toFixed(2)}s (Muncul Lebih Lambat)`
+                      : 'Tepat Waktu (0.00s)'}
+                  </span>
+                </div>
+
+                {/* Quick Step Buttons */}
+                <div>
+                  <div className="grid grid-cols-5 gap-1.5 mb-2">
+                    <button
+                      onClick={() => updateSubOffset(subOffset - 1.0)}
+                      className="p-1.5 rounded-lg bg-dark-base border border-dark-border hover:border-amber-500/50 text-gray-300 hover:text-amber-300 active:scale-95 transition-all text-center flex flex-col items-center gap-0.5"
+                      title="Perlambat 1 detik (-1.0s)"
+                    >
+                      <span className="text-[11px] font-extrabold font-mono">-1.0s</span>
+                      <span className="text-[8px] text-gray-400">Lambat</span>
+                    </button>
+
+                    <button
+                      onClick={() => updateSubOffset(subOffset - 0.1)}
+                      className="p-1.5 rounded-lg bg-dark-base border border-dark-border hover:border-amber-500/50 text-gray-300 hover:text-amber-300 active:scale-95 transition-all text-center flex flex-col items-center gap-0.5"
+                      title="Perlambat 100 milidetik (-0.1s)"
+                    >
+                      <span className="text-[11px] font-extrabold font-mono">-0.1s</span>
+                      <span className="text-[8px] text-gray-400">Halus</span>
+                    </button>
+
+                    <button
+                      onClick={() => updateSubOffset(0)}
+                      disabled={subOffset === 0}
+                      className="p-1.5 rounded-lg bg-dark-base border border-dark-border hover:border-brand-500/50 text-gray-300 hover:text-white active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-center flex flex-col items-center justify-center gap-0.5"
+                      title="Reset Offset ke 0 detik"
+                    >
+                      <RotateCcw className="w-3 h-3 text-brand-400" />
+                      <span className="text-[9px] font-bold">Reset</span>
+                    </button>
+
+                    <button
+                      onClick={() => updateSubOffset(subOffset + 0.1)}
+                      className="p-1.5 rounded-lg bg-dark-base border border-dark-border hover:border-emerald-500/50 text-gray-300 hover:text-emerald-300 active:scale-95 transition-all text-center flex flex-col items-center gap-0.5"
+                      title="Percepat 100 milidetik (+0.1s)"
+                    >
+                      <span className="text-[11px] font-extrabold font-mono">+0.1s</span>
+                      <span className="text-[8px] text-gray-400">Halus</span>
+                    </button>
+
+                    <button
+                      onClick={() => updateSubOffset(subOffset + 1.0)}
+                      className="p-1.5 rounded-lg bg-dark-base border border-dark-border hover:border-emerald-500/50 text-gray-300 hover:text-emerald-300 active:scale-95 transition-all text-center flex flex-col items-center gap-0.5"
+                      title="Percepat 1 detik (+1.0s)"
+                    >
+                      <span className="text-[11px] font-extrabold font-mono">+1.0s</span>
+                      <span className="text-[8px] text-gray-400">Cepat</span>
+                    </button>
+                  </div>
+
+                  {/* Range Slider for smooth continuous timing adjust */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[10px] text-amber-400 font-mono">-10s</span>
+                    <input
+                      type="range"
+                      min={-10}
+                      max={10}
+                      step={0.05}
+                      value={subOffset}
+                      onChange={(e) => updateSubOffset(parseFloat(e.target.value))}
+                      className="flex-1 h-2 bg-gray-700 accent-sky-500 rounded-lg cursor-pointer transition-all hover:h-2.5"
+                    />
+                    <span className="text-[10px] text-emerald-400 font-mono">+10s</span>
+                  </div>
+                </div>
+
+                {/* Helper Tips */}
+                <div className="p-2 rounded-lg bg-dark-base/60 border border-dark-border text-[10px] text-gray-400 space-y-0.5">
+                  <p><strong className="text-emerald-400">+ (Percepat)</strong>: Jika subtitle terlambat / muncul sesudah aktor bicara.</p>
+                  <p><strong className="text-amber-400">- (Perlambat)</strong>: Jika subtitle terlalu cepat / muncul sebelum aktor bicara.</p>
+                  <p className="text-gray-400 pt-0.5 text-[9px]">
+                    Shortcut keyboard: <kbd className="px-1 py-0.5 bg-dark-card border border-dark-border rounded text-gray-200 font-mono">[</kbd> perlambat, <kbd className="px-1 py-0.5 bg-dark-card border border-dark-border rounded text-gray-200 font-mono">]</kbd> percepat.
+                  </p>
+                </div>
+              </div>
+
+              {/* 4. Subtitle Size Adjustment (Slider + Stepper) */}
               <div className="space-y-3 p-3.5 rounded-xl bg-dark-card/60 border border-dark-border/60">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
@@ -1531,7 +2008,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </div>
               </div>
 
-              {/* 3. Subtitle Font Color Options */}
+              {/* 5. Subtitle Font Color Options */}
               <div className="space-y-2.5 p-3.5 rounded-xl bg-dark-card/60 border border-dark-border/60">
                 <label className="text-xs font-bold text-white block">Warna Teks Subtitle</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1558,7 +2035,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </div>
               </div>
 
-              {/* 4. Subtitle Background Style */}
+              {/* 6. Subtitle Background Style */}
               <div className="space-y-2.5 p-3.5 rounded-xl bg-dark-card/60 border border-dark-border/60">
                 <label className="text-xs font-bold text-white block">Gaya Latar Belakang (Background)</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -1582,7 +2059,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
                 </div>
               </div>
 
-              {/* 5. Vertical Position Offset */}
+              {/* 7. Vertical Position Offset */}
               <div className="space-y-2.5 p-3.5 rounded-xl bg-dark-card/60 border border-dark-border/60">
                 <label className="text-xs font-bold text-white block">Posisi Vertikal</label>
                 <div className="grid grid-cols-2 gap-2">
