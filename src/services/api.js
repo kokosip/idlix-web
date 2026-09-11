@@ -31,34 +31,71 @@ export const extractMediaArray = (data) => {
   return [];
 };
 
-// Generic fetch wrapper
-const fetchApi = async (endpoint) => {
+// Client-side Memory Cache & In-flight Deduplication
+const apiCache = new Map();
+const inFlightRequests = new Map();
+const DEFAULT_CACHE_TTL = 120_000; // 2 minutes
+
+export const clearApiCache = () => {
+  apiCache.clear();
+};
+
+// Generic fetch wrapper with cache & in-flight deduplication
+const fetchApi = async (endpoint, options = {}) => {
+  const { useCache = true, ttl = DEFAULT_CACHE_TTL } = options;
   const baseUrl = getApiBaseUrl();
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = baseUrl ? `${baseUrl}${cleanEndpoint}` : cleanEndpoint;
 
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  // 1. Check in-memory cache
+  if (useCache && apiCache.has(url)) {
+    const entry = apiCache.get(url);
+    if (Date.now() - entry.timestamp < ttl) {
+      return entry.result;
     }
-
-    const data = await response.json();
-    return { success: true, data };
-  } catch (error) {
-    console.warn(`[IDLIX API] Error fetching ${url}:`, error.message);
-    return { success: false, error: error.message };
+    apiCache.delete(url);
   }
+
+  // 2. Deduplicate identical in-flight requests
+  if (inFlightRequests.has(url)) {
+    return inFlightRequests.get(url);
+  }
+
+  const promise = (async () => {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const result = { success: true, data };
+
+      if (useCache) {
+        apiCache.set(url, { timestamp: Date.now(), result });
+      }
+
+      return result;
+    } catch (error) {
+      console.warn(`[IDLIX API] Error fetching ${url}:`, error.message);
+      return { success: false, error: error.message };
+    } finally {
+      inFlightRequests.delete(url);
+    }
+  })();
+
+  inFlightRequests.set(url, promise);
+  return promise;
 };
 
 // Health Check
 export const checkApiStatus = async () => {
-  const res = await fetchApi('/api/home');
+  const res = await fetchApi('/api/home', { useCache: false });
   return res;
 };
 

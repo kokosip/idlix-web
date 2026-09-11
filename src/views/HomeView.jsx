@@ -94,15 +94,11 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
     const loadData = async () => {
       setIsLoading(true);
 
-      const [featRes, recRes, recSerRes, animeRes, xx1Res, movRes, serRes, leadRes, secRes, flatRes] = await Promise.all([
+      // Phase 1: High-priority content (Banner and top rails)
+      const [featRes, recRes, recSerRes, secRes, flatRes] = await Promise.all([
         getFeatured(),
         getMovies(),
         getSeries(),
-        getByGenre('animation'),
-        getCinemaXXI(),
-        getTrendingMovies(),
-        getTrendingSeries(),
-        getLeaderboard(),
         getHomeSections(),
         getHomeFlat(),
       ]);
@@ -135,11 +131,25 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
       }
       setRecentSeries(recSeries);
 
+      // Render top page immediately without waiting for lower rails
+      setIsLoading(false);
+
+      // Phase 2: Secondary rows (staggered to protect backend from concurrent request spikes)
+      const [animeRes, xx1Res, movRes, serRes, leadRes] = await Promise.all([
+        getByGenre('animation'),
+        getCinemaXXI(),
+        getTrendingMovies(),
+        getTrendingSeries(),
+        getLeaderboard(),
+      ]);
+
+      if (!isMounted) return;
+
       // 4. Anime & Animasi
       let animes = animeRes.success ? extractMediaArray(animeRes.data).map(normalizeMediaItem) : [];
       setAnimeItems(animes);
 
-      // 2. CinemaXXI items
+      // 5. CinemaXXI items
       let xx1 = xx1Res.success ? extractMediaArray(xx1Res.data).map(normalizeMediaItem) : [];
       if (xx1.length === 0 && secRes.success && secRes.data) {
         xx1 = extractMediaArray(secRes.data.cinemaxxi || secRes.data.cinema_xxi).map(normalizeMediaItem);
@@ -149,7 +159,7 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
       }
       setCinemaXXIItems(xx1);
 
-      // 3. Trending Movies
+      // 6. Trending Movies
       let tMov = movRes.success ? extractMediaArray(movRes.data).map(normalizeMediaItem) : [];
       if (tMov.length === 0 && secRes.success && secRes.data) {
         tMov = extractMediaArray(secRes.data.movies || secRes.data.trending_movies).map(normalizeMediaItem);
@@ -159,7 +169,7 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
       }
       setTrendingMovies(tMov);
 
-      // 4. Trending Series
+      // 7. Trending Series
       let tSer = serRes.success ? extractMediaArray(serRes.data).map(normalizeMediaItem) : [];
       if (tSer.length === 0 && secRes.success && secRes.data) {
         tSer = extractMediaArray(secRes.data.series || secRes.data.trending_series).map(normalizeMediaItem);
@@ -169,14 +179,12 @@ export default function HomeView({ onSelectMedia, onPlayStream }) {
       }
       setTrendingSeries(tSer);
 
-      // 5. Leaderboard items
+      // 8. Leaderboard items
       let lead = leadRes.success ? extractMediaArray(leadRes.data).map(normalizeMediaItem) : [];
       if (lead.length === 0 && flatItems.length > 0) {
         lead = flatItems.slice(0, 10);
       }
       setLeaderboardItems(lead);
-
-      setIsLoading(false);
     };
 
     loadData();
