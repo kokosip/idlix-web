@@ -510,27 +510,36 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
     };
   }, []);
 
-  // Disable background page scrolling & touch dragging
+  // Disable background page scrolling & touch dragging (excluding drawers and scrollable elements)
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
-    const originalTouchAction = document.body.style.touchAction;
     const originalOverscroll = document.body.style.overscrollBehavior;
 
     document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
     document.body.style.overscrollBehavior = 'none';
 
     const preventTouchScroll = (e) => {
-      if (e.target.tagName !== 'SELECT' && e.target.tagName !== 'OPTION' && e.target.tagName !== 'INPUT') {
-        if (e.cancelable) e.preventDefault();
+      // Do not block touch scrolling inside drawers, modals, selects, inputs, or any scrollable containers
+      if (
+        e.target.tagName === 'SELECT' ||
+        e.target.tagName === 'OPTION' ||
+        e.target.tagName === 'INPUT' ||
+        e.target.tagName === 'TEXTAREA' ||
+        e.target.closest('[data-drawer]') ||
+        e.target.closest('[data-sub-modal]') ||
+        e.target.closest('.overflow-y-auto') ||
+        e.target.closest('.overflow-x-auto') ||
+        e.target.closest('.overflow-auto')
+      ) {
+        return;
       }
+      if (e.cancelable) e.preventDefault();
     };
 
     document.addEventListener('touchmove', preventTouchScroll, { passive: false });
 
     return () => {
       document.body.style.overflow = originalOverflow;
-      document.body.style.touchAction = originalTouchAction;
       document.body.style.overscrollBehavior = originalOverscroll;
       document.removeEventListener('touchmove', preventTouchScroll);
     };
@@ -1042,7 +1051,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
 
   return (
     <div
-      className={`fixed inset-0 z-50 bg-black w-screen h-screen flex flex-col justify-between overflow-hidden select-none touch-none overscroll-none animate-fade-in ${
+      className={`fixed inset-0 z-50 bg-black w-screen h-screen flex flex-col justify-between overflow-hidden select-none overscroll-none animate-fade-in ${
         controlsVisible || isEpisodesDrawerOpen || isSubSettingsOpen ? 'cursor-default' : 'cursor-none'
       }`}
       onMouseMove={() => resetControlsTimeout(2000)}
@@ -1548,10 +1557,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           <div 
             data-drawer="true"
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-0 right-0 bottom-0 w-full sm:w-[420px] max-w-full bg-dark-base/95 border-l border-dark-border/80 backdrop-blur-xl z-50 p-4 sm:p-6 flex flex-col shadow-2xl animate-fade-in pointer-events-auto"
+            className="absolute top-0 right-0 bottom-0 w-full sm:w-[420px] max-w-full h-full max-h-full bg-dark-base/95 border-l border-dark-border/80 backdrop-blur-xl z-50 p-4 sm:p-6 flex flex-col shadow-2xl animate-fade-in pointer-events-auto touch-auto overscroll-contain"
+            style={{ touchAction: 'pan-y' }}
           >
             {/* Drawer Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-dark-border/60">
+            <div className="flex items-center justify-between pb-4 border-b border-dark-border/60 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <Tv className="w-5 h-5 text-brand-500 shrink-0" />
                 <div className="min-w-0">
@@ -1569,12 +1579,15 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
 
             {/* Season Selector Tabs */}
-            <div className="py-4 border-b border-dark-border/40">
+            <div className="py-4 border-b border-dark-border/40 shrink-0">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-gray-300">Pilih Season:</label>
                 <span className="text-[11px] text-brand-400 font-bold">Season {selectedDrawerSeason}</span>
               </div>
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              <div 
+                className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none touch-pan-x"
+                style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+              >
                 {getSeasonNumbers().map((sNum) => (
                   <button
                     key={sNum}
@@ -1592,7 +1605,10 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
 
             {/* Episode List Container */}
-            <div className="flex-1 overflow-y-auto py-3 space-y-2 pr-1 custom-scrollbar">
+            <div 
+              className="flex-1 min-h-0 overflow-y-auto py-3 space-y-2 pr-1 custom-scrollbar touch-pan-y overscroll-contain"
+              style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+            >
               {isLoadingDrawerEpisodes ? (
                 <div className="p-12 text-center text-gray-400 flex flex-col items-center justify-center gap-2">
                   <Loader2 className="w-7 h-7 text-brand-500 animate-spin" />
@@ -1671,7 +1687,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
 
             {/* Drawer Footer */}
-            <div className="pt-3 border-t border-dark-border/40 text-center">
+            <div className="pt-3 border-t border-dark-border/40 text-center shrink-0">
               <p className="text-[10px] text-gray-400">
                 Pilih episode untuk langsung memutar tanpa keluar dari player.
               </p>
@@ -1685,10 +1701,11 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
           <div 
             data-sub-modal="true"
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-0 right-0 bottom-0 w-full sm:w-[420px] max-w-full bg-dark-base/95 border-l border-dark-border/80 backdrop-blur-xl z-50 p-4 sm:p-6 flex flex-col shadow-2xl animate-fade-in pointer-events-auto"
+            className="absolute top-0 right-0 bottom-0 w-full sm:w-[420px] max-w-full h-full max-h-full bg-dark-base/95 border-l border-dark-border/80 backdrop-blur-xl z-50 p-4 sm:p-6 flex flex-col shadow-2xl animate-fade-in pointer-events-auto touch-auto overscroll-contain"
+            style={{ touchAction: 'pan-y' }}
           >
             {/* Drawer Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-dark-border/60">
+            <div className="flex items-center justify-between pb-4 border-b border-dark-border/60 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <SlidersHorizontal className="w-5 h-5 text-brand-500 shrink-0" />
                 <div className="min-w-0">
@@ -1706,7 +1723,10 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
 
             {/* Scrollable Settings Content */}
-            <div className="flex-1 overflow-y-auto py-4 space-y-5 pr-1 custom-scrollbar">
+            <div 
+              className="flex-1 min-h-0 overflow-y-auto py-4 space-y-5 pr-1 custom-scrollbar touch-pan-y overscroll-contain"
+              style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+            >
 
               {/* 1. Custom Subtitle (.SRT / .VTT) LocalStorage Management Card */}
               <div className="space-y-3 p-3.5 rounded-xl bg-dark-card/80 border border-brand-500/30 shadow-md">
@@ -2092,7 +2112,7 @@ export default function VideoPlayerModal({ media, episodeInfo, onClose }) {
             </div>
 
             {/* Drawer Footer Actions */}
-            <div className="pt-4 border-t border-dark-border/60 flex items-center justify-between gap-3">
+            <div className="pt-4 border-t border-dark-border/60 flex items-center justify-between gap-3 shrink-0">
               <button
                 onClick={resetSubSettings}
                 className="px-3 py-2 rounded-lg bg-dark-card border border-dark-border text-gray-300 hover:text-white hover:bg-dark-hover text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95"
